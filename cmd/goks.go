@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/kong/goks/lualibs/go/rand"
 	json "github.com/layeh/gopher-json"
 	lua "github.com/yuin/gopher-lua"
 )
@@ -20,6 +21,7 @@ func mainAux() int {
 	defer L.Close()
 	L.SetMx(1)
 	L.PreloadModule("json", json.Loader)
+	L.PreloadModule("go.rand", rand.Loader)
 
 	if nargs := flag.NArg(); nargs > 0 {
 		script := flag.Arg(0)
