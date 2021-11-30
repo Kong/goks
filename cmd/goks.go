@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/kong/goks/lualibs/go/ipmatcher"
 	"github.com/kong/goks/lualibs/go/rand"
 	"github.com/kong/goks/lualibs/go/uuid"
 	json "github.com/layeh/gopher-json"
@@ -24,6 +25,7 @@ func mainAux() int {
 	L.PreloadModule("json", json.Loader)
 	L.PreloadModule("go.rand", rand.Loader)
 	L.PreloadModule("go.uuid", uuid.Loader)
+	L.PreloadModule("go.ipmatcher", ipmatcher.Loader)
 
 	if nargs := flag.NArg(); nargs > 0 {
 		script := flag.Arg(0)
