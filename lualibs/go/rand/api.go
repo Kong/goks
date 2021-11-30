@@ -6,7 +6,6 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
-// MD5 lua crypto.md5(string) return string
 func GetRandBytes(L *lua.LState) int {
 	size := L.CheckInt(1)
 	buffer := make([]byte, size)
