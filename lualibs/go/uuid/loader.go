@@ -13,4 +13,5 @@ func Loader(L *lua.LState) int {
 
 var api = map[string]lua.LGFunction{
 	"generate": GetUUID,
+	"validate": ValidateUUID,
 }
