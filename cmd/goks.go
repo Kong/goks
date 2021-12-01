@@ -10,6 +10,7 @@ import (
 	"github.com/kong/goks/lualibs/go/rand"
 	"github.com/kong/goks/lualibs/go/uuid"
 	json "github.com/layeh/gopher-json"
+	"github.com/yuin/gluare"
 	lua "github.com/yuin/gopher-lua"
 )
 
@@ -27,6 +28,7 @@ func mainAux() int {
 	L.PreloadModule("go.rand", rand.Loader)
 	L.PreloadModule("go.uuid", uuid.Loader)
 	L.PreloadModule("go.ipmatcher", ipmatcher.Loader)
+	L.PreloadModule("go.re2", gluare.Loader)
 	ngx.LoadNgx(L)
 
 	if nargs := flag.NArg(); nargs > 0 {
