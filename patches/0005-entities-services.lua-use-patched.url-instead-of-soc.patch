@@ -1,0 +1,25 @@
+From cbec108d95a9f17133f8f74c0ff4ff62abba12c7 Mon Sep 17 00:00:00 2001
+From: Harry Bagdi <harrybagdi@gmail.com>
+Date: Tue, 30 Nov 2021 17:09:22 -0800
+Subject: [PATCH 05/10] entities/services.lua: use patched.url instead of
+ socket.url
+
+---
+ lua-tree/share/lua/5.1/kong/db/schema/entities/services.lua | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/lua-tree/share/lua/5.1/kong/db/schema/entities/services.lua b/lua-tree/share/lua/5.1/kong/db/schema/entities/services.lua
+index b1093a2..0afc200 100644
+--- a/lua-tree/share/lua/5.1/kong/db/schema/entities/services.lua
++++ b/lua-tree/share/lua/5.1/kong/db/schema/entities/services.lua
+@@ -1,6 +1,6 @@
+ local typedefs = require "kong.db.schema.typedefs"
+ local Schema = require "kong.db.schema"
+-local url = require "socket.url"
++local url = require "patched.url"
+ 
+ 
+ local tostring = tostring
+-- 
+2.25.1
+

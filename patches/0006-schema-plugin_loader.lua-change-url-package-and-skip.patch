@@ -1,0 +1,41 @@
+From 876a8c8cd88187ad3b4d157cba8d1ff2a96bcd34 Mon Sep 17 00:00:00 2001
+From: Harry Bagdi <harrybagdi@gmail.com>
+Date: Tue, 30 Nov 2021 17:09:58 -0800
+Subject: [PATCH 06/10] schema/plugin_loader.lua: change url package and skip
+ plugin server
+
+- use patched.url instead of socket.url
+- do not use plugin_server since it is not applicable in our case
+---
+ lua-tree/share/lua/5.1/kong/db/schema/plugin_loader.lua | 7 +------
+ 1 file changed, 1 insertion(+), 6 deletions(-)
+
+diff --git a/lua-tree/share/lua/5.1/kong/db/schema/plugin_loader.lua b/lua-tree/share/lua/5.1/kong/db/schema/plugin_loader.lua
+index abcab8c..96e6d3d 100644
+--- a/lua-tree/share/lua/5.1/kong/db/schema/plugin_loader.lua
++++ b/lua-tree/share/lua/5.1/kong/db/schema/plugin_loader.lua
+@@ -1,9 +1,8 @@
+ local MetaSchema = require "kong.db.schema.metaschema"
+-local socket_url = require "socket.url"
++local socket_url = require "patched.url"
+ local typedefs = require "kong.db.schema.typedefs"
+ local Entity = require "kong.db.schema.entity"
+ local utils = require "kong.tools.utils"
+-local plugin_servers = require "kong.runloop.plugin_servers"
+ 
+ 
+ local plugin_loader = {}
+@@ -183,10 +182,6 @@ end
+ function plugin_loader.load_subschema(parent_schema, plugin, errors)
+   local plugin_schema = "kong.plugins." .. plugin .. ".schema"
+   local ok, schema = utils.load_module_if_exists(plugin_schema)
+-  if not ok then
+-    ok, schema = plugin_servers.load_schema(plugin)
+-  end
+-
+   if not ok then
+     return nil, "no configuration schema found for plugin: " .. plugin
+   end
+-- 
+2.25.1
+

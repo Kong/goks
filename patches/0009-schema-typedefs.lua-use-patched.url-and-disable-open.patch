@@ -1,0 +1,54 @@
+From 589ab62fff30d3cb573dc67ea7e93fd4e4da8586 Mon Sep 17 00:00:00 2001
+From: Harry Bagdi <harrybagdi@gmail.com>
+Date: Tue, 30 Nov 2021 17:25:37 -0800
+Subject: [PATCH 09/10] schema/typedefs.lua: use patched.url and disable
+ openssl
+
+---
+ .../share/lua/5.1/kong/db/schema/typedefs.lua  | 18 +++---------------
+ 1 file changed, 3 insertions(+), 15 deletions(-)
+
+diff --git a/lua-tree/share/lua/5.1/kong/db/schema/typedefs.lua b/lua-tree/share/lua/5.1/kong/db/schema/typedefs.lua
+index c1a150a..3d6c639 100644
+--- a/lua-tree/share/lua/5.1/kong/db/schema/typedefs.lua
++++ b/lua-tree/share/lua/5.1/kong/db/schema/typedefs.lua
+@@ -1,10 +1,8 @@
+ --- A library of ready-to-use type synonyms to use in schema definitions.
+ -- @module kong.db.schema.typedefs
+ local utils = require "kong.tools.utils"
+-local openssl_pkey = require "resty.openssl.pkey"
+-local openssl_x509 = require "resty.openssl.x509"
+ local Schema = require "kong.db.schema"
+-local socket_url = require "socket.url"
++local socket_url = require "patched.url"
+ local constants = require "kong.constants"
+ 
+ 
+@@ -216,22 +214,12 @@ end
+ 
+ 
+ local function validate_certificate(cert)
+-  local _, err = openssl_x509.new(cert)
+-  if err then
+-    return nil, "invalid certificate: " .. err
+-  end
+-
+-  return true
++  return nil, "openssl: not yet implemented"
+ end
+ 
+ 
+ local function validate_key(key)
+-  local _, err =  openssl_pkey.new(key)
+-  if err then
+-    return nil, "invalid key: " .. err
+-  end
+-
+-  return true
++  return nil, "openssl: not yet implemented"
+ end
+ 
+ 
+-- 
+2.25.1
+
