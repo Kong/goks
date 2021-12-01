@@ -1,10 +1,8 @@
 --- A library of ready-to-use type synonyms to use in schema definitions.
 -- @module kong.db.schema.typedefs
 local utils = require "kong.tools.utils"
-local openssl_pkey = require "resty.openssl.pkey"
-local openssl_x509 = require "resty.openssl.x509"
 local Schema = require "kong.db.schema"
-local socket_url = require "socket.url"
+local socket_url = require "patched.url"
 local constants = require "kong.constants"
 
 
@@ -216,22 +214,12 @@ end
 
 
 local function validate_certificate(cert)
-  local _, err = openssl_x509.new(cert)
-  if err then
-    return nil, "invalid certificate: " .. err
-  end
-
-  return true
+  return nil, "openssl: not yet implemented"
 end
 
 
 local function validate_key(key)
-  local _, err =  openssl_pkey.new(key)
-  if err then
-    return nil, "invalid key: " .. err
-  end
-
-  return true
+  return nil, "openssl: not yet implemented"
 end
 
 

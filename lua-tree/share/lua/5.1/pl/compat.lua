@@ -26,7 +26,7 @@ end
 
 --- the directory separator character for the current platform.
 -- @field dir_separator
-compat.dir_separator = _G.package.config:sub(1,1)
+--compat.dir_separator = _G.package.config:sub(1,1)
 
 --- boolean flag this is a Windows platform.
 -- @field is_windows

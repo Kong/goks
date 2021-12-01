@@ -1,6 +1,6 @@
 local typedefs = require "kong.db.schema.typedefs"
 local Schema = require "kong.db.schema"
-local url = require "socket.url"
+local url = require "patched.url"
 
 
 local tostring = tostring
