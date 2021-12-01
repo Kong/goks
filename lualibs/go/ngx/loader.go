@@ -4,17 +4,17 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
-func LoadNgx(L *lua.LState) {
-	ngx := L.NewTable()
+func LoadNgx(l *lua.LState) {
+	ngx := l.NewTable()
 	// register other stuff
-	L.SetFuncs(ngx, api)
-	L.SetField(ngx, "null", lua.LString("null"))
-	L.SetGlobal("ngx", ngx)
+	l.SetFuncs(ngx, api)
+	l.SetField(ngx, "null", lua.LString("null"))
+	l.SetGlobal("ngx", ngx)
 }
 
 var api = map[string]lua.LGFunction{
 	"time":          GetNgxTime,
 	"now":           GetNgxNow,
-	"update_time":   NgxUpdateTime,
+	"update_time":   UpdateTime,
 	"encode_base64": EncodeBase64,
 }

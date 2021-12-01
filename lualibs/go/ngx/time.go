@@ -6,21 +6,23 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
-func GetNgxTime(L *lua.LState) int {
+func GetNgxTime(l *lua.LState) int {
 	epoch := int32(time.Now().Unix())
-	L.Push(lua.LNumber(epoch))
+	l.Push(lua.LNumber(epoch))
 	return 1
 }
 
-func GetNgxNow(L *lua.LState) int {
+func GetNgxNow(l *lua.LState) int {
 	t := time.Now()
 	seconds := t.Unix()
-	miliseconds := t.UnixMilli() - seconds*1000
-	result := float64(seconds) + float64(miliseconds)/float64(1000.0)
-	L.Push(lua.LNumber(result))
+	var secondMultiplier int64 = 1000
+	msDivisor := 1000.0
+	miliseconds := t.UnixMilli() - seconds*secondMultiplier
+	result := float64(seconds) + float64(miliseconds)/msDivisor
+	l.Push(lua.LNumber(result))
 	return 1
 }
 
-func NgxUpdateTime(L *lua.LState) int {
+func UpdateTime(_ *lua.LState) int {
 	return 0
 }

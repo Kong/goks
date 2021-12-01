@@ -1,0 +1,61 @@
+run:
+  timeout: 5m
+  build-tags:
+  - integration
+linters:
+  enable:
+  - asciicheck
+  - bidichk
+  - bodyclose
+  - deadcode
+  - depguard
+  - dogsled
+  - durationcheck
+  - errcheck
+  - exportloopref
+  - exhaustive
+  - forbidigo
+  - forcetypeassert
+  - gci
+  - goconst
+  - gocritic
+  - godot
+  - gofmt
+  - gofumpt
+  - goimports
+  - gomnd
+  - gosec
+  - gosimple
+  - govet
+  - ifshort
+  - importas
+  - ineffassign
+  - lll
+  - megacheck
+  - misspell
+  - nakedret
+  - nilerr
+  - nilnil
+  - noctx
+  - nolintlint
+  - predeclared
+  - promlinter
+  - revive
+  - rowserrcheck
+  - sqlclosecheck
+  - staticcheck
+  - structcheck
+  - stylecheck
+  - typecheck
+  - unconvert
+  - unparam
+  - varcheck
+  - wastedassign
+  - whitespace
+  - tenv
+issues:
+  exclude-rules:
+  - linters:
+    - forbidigo
+    text:  "fmt.Println" # ignore err not checked in test files
+    path: cmd/goks.go

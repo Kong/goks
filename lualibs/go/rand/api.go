@@ -6,13 +6,12 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
-func GetRandBytes(L *lua.LState) int {
-	size := L.CheckInt(1)
+func GetRandBytes(l *lua.LState) int {
+	size := l.CheckInt(1)
 	buffer := make([]byte, size)
-	_, err := cryptoRand.Read(buffer)
-	if err != nil {
+	if _, err := cryptoRand.Read(buffer); err != nil {
 		panic(err)
 	}
-	L.Push(lua.LString(string(buffer)))
+	l.Push(lua.LString(string(buffer)))
 	return 1
 }
