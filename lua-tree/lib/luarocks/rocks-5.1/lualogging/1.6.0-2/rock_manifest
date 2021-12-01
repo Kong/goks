@@ -1,0 +1,31 @@
+rock_manifest = {
+   docs = {
+      ["console.html"] = "4f049ca678ba20d57f3e74bc1825bfe6",
+      ["doc.css"] = "c6544af339619553247c3449e6705aae",
+      ["email.html"] = "cf2527f7241e37203bc8175d3d1ed902",
+      ["file.html"] = "6ff877c0f786937608191332e62d3927",
+      images = {
+         ["lualogging-128.png"] = "7108027e4a8a3e84ae51d2a5fd5cb369"
+      },
+      ["index.html"] = "27cab889ee27198534e45cb28ec6d068",
+      ["license.html"] = "bc9986bf1b4a7754d3cddea983d4a907",
+      ["manual.html"] = "fd578702ab581f36988a4f41627629a8",
+      ["nginx.html"] = "a9253bbab13e78f4bed2cb172b45aad9",
+      ["rolling_file.html"] = "7ac6ac10440b25b6bef017ef4d64b688",
+      ["socket.html"] = "ae98618e5744f015224f371db2d411aa",
+      ["sql.html"] = "70ce7e5c0132d089c7c357aa212f2704"
+   },
+   lua = {
+      logging = {
+         ["console.lua"] = "b5d1aaf8c63d93953cfb45ebc334d1b9",
+         ["email.lua"] = "31e87c760db6d1555b2223482a98b551",
+         ["file.lua"] = "b35ae057c77cf9e006b734c0897344b4",
+         ["nginx.lua"] = "fcfe89c7041208a73b5b2a7a22030f1c",
+         ["rolling_file.lua"] = "098653ec93e4378d2b83627d191c7b8f",
+         ["socket.lua"] = "10ba9421429630a7423e1bc0b8ef4761",
+         ["sql.lua"] = "9f9acdf0a65ea4137acd389b50f711fe"
+      },
+      ["logging.lua"] = "4c8d7e031546aafed79d935fc7145c87"
+   },
+   ["lualogging-1.6.0-2.rockspec"] = "9a85c2f2a46b7da4b2d94b9415b0ede9"
+}

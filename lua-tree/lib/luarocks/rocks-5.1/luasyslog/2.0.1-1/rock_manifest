@@ -1,0 +1,15 @@
+rock_manifest = {
+   doc = {
+      COPYING = "78393b5493f94d586b950c819ad263c1",
+      ["README.md"] = "c969c93e27b1ded788fe11dbe78285c4"
+   },
+   lib = {
+      ["lsyslog.so"] = "3cd9226736b731e2c9dba635fa1fa350"
+   },
+   lua = {
+      logging = {
+         ["syslog.lua"] = "6dee71c2b0478bbaef585d671d68bbd0"
+      }
+   },
+   ["luasyslog-2.0.1-1.rockspec"] = "76bb8fb57ddb4a1d05f278c30d44b865"
+}

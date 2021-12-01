@@ -1,0 +1,14 @@
+rock_manifest = {
+   doc = {
+      LICENSE = "759700dd96fbc5c3b37ea958b7eae988",
+      ["README.md"] = "78896032098a1b6a1deaa274a637d313",
+      ["README.zh.md"] = "238e3bea065a38970989eb383757c812"
+   },
+   lib = {
+      ["pb.so"] = "967c37714cac674b94da8a97914dd7bf"
+   },
+   lua = {
+      ["protoc.lua"] = "e14c400fbe8d3add36ee1256bb5c0d15"
+   },
+   ["lua-protobuf-0.3.3-1.rockspec"] = "606c49c39e9792e20b84f9033b2de9f7"
+}

@@ -1,0 +1,24 @@
+rock_manifest = {
+   doc = {
+      ["index.html"] = "138a9734d2658482b7e16a6e88d9a782",
+      ["ldoc.css"] = "e2b04e90ff648f8e00d9d4d458de59d9",
+      modules = {
+         ["lyaml.explicit.html"] = "d9bc2dfc0bda46c6e38b37255dfb8efd",
+         ["lyaml.functional.html"] = "96763bb23b172391f3ff7ceb538bd846",
+         ["lyaml.html"] = "8640929e5050dbfe8de56252d686f67e",
+         ["lyaml.implicit.html"] = "e4135f4221a90d1c1b380960c0db5aaa"
+      }
+   },
+   lib = {
+      ["yaml.so"] = "ca095474fa91e7d5f578255bd07e4d42"
+   },
+   lua = {
+      lyaml = {
+         ["explicit.lua"] = "106f348f0bdc89d46e909fdb4819aa7c",
+         ["functional.lua"] = "1db764ebb24ce5bb0cde74c660e1bcdf",
+         ["implicit.lua"] = "fac58f3ce326739b5f9be66faa4afeb2",
+         ["init.lua"] = "dbac26f34b388c2012961693089e7fb5"
+      }
+   },
+   ["lyaml-6.2.7-1.rockspec"] = "4aa84c7b4dcfc06d522b2891b8fb687e"
+}

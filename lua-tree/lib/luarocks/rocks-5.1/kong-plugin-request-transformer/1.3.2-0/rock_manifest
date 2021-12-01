@@ -1,0 +1,24 @@
+rock_manifest = {
+   doc = {
+      ["CHANGELOG.md"] = "3010d9face1029a687d4265c269fbcc9",
+      LICENSE = "8a4e7a56bb9bf3e30efc859518d87233",
+      ["README.md"] = "06f8891a83a3edc1412407ee173a0a54"
+   },
+   ["kong-plugin-request-transformer-1.3.2-0.rockspec"] = "7867fea2ea8c8999bbb4635d2dfa05fb",
+   lua = {
+      kong = {
+         plugins = {
+            ["request-transformer"] = {
+               ["access.lua"] = "e1b2bc450ea30a5b9af927b18a8b24b3",
+               ["handler.lua"] = "d2358527c488fe46baee9b4f0c908903",
+               migrations = {
+                  ["cassandra.lua"] = "ca4ae905607af5491099f873f20dab4e",
+                  ["common.lua"] = "0aa63e80adfa988936f1c5b50c2a4a06",
+                  ["postgres.lua"] = "d504369fc6badf1ec91f28e862198a58"
+               },
+               ["schema.lua"] = "e93c525c1d0e094e3657fc8f62fdb7b9"
+            }
+         }
+      }
+   }
+}

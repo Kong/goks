@@ -1,0 +1,14 @@
+rock_manifest = {
+   doc = {
+      ["README.markdown"] = "89b91c501990f073710afbbe42abf07f"
+   },
+   lua = {
+      resty = {
+         lrucache = {
+            ["pureffi.lua"] = "353932a98ac5747edec43159f57c1837"
+         },
+         ["lrucache.lua"] = "6664d937fb72f4d9d2e58a21d6d7526c"
+      }
+   },
+   ["lua-resty-lrucache-0.09-2.rockspec"] = "45b55a6b929857f6a48fa34069ab8f78"
+}

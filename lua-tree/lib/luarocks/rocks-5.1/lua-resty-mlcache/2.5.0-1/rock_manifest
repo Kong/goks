@@ -1,0 +1,16 @@
+rock_manifest = {
+   doc = {
+      ["CHANGELOG.md"] = "cada70ef6f65f920ab336e3df8f0bfd9",
+      LICENSE = "5e8660996abfd2ecb0c6454c01e1b8c4",
+      ["README.md"] = "d3a7a906e97e78bfd931ed7016c5be65"
+   },
+   lua = {
+      resty = {
+         mlcache = {
+            ["ipc.lua"] = "2bc357a51199fa63a13ae253d6ead721"
+         },
+         ["mlcache.lua"] = "62fd4646bf97bdde4cd2395af48f7904"
+      }
+   },
+   ["lua-resty-mlcache-2.5.0-1.rockspec"] = "d7d1197cc7ae5d1623dbda181ccc8583"
+}
