@@ -26,6 +26,12 @@ func TestValidator_LoadSchema(t *testing.T) {
 		expected := "name: field required for entity check"
 		assert.True(t, strings.Contains(err.Error(), expected))
 	})
+	t.Run("fails to load a schema with invalid imports", func(t *testing.T) {
+		schema, err := ioutil.ReadFile("testdata/invalid_import_schema.lua")
+		assert.Nil(t, err)
+		err = v.LoadSchema(string(schema))
+		assert.NotNil(t, err)
+	})
 }
 
 func TestValidator_Validate(t *testing.T) {
