@@ -7,7 +7,6 @@ local uuid         = require "go.uuid".generate
 
 local setmetatable = setmetatable
 local re_match     = require "go.re2".match
-local re_find      = require "go.re2".find
 local concat       = table.concat
 local insert       = table.insert
 local format       = string.format
@@ -316,7 +315,7 @@ Schema.validators = {
     if #value ~= 36 then
       return nil
     end
-    return re_find(value, uuid_regex) and true or nil
+    return re_match(value, uuid_regex) and true or nil
   end,
 
   contains = function(array, wanted)
@@ -1003,7 +1002,7 @@ local function handle_missing_field(field, value, opts)
 
   -- If not `required`, it is nullable.
   if field.required ~= true then
-    return null
+    return nil
   end
 
   if field.abstract then
