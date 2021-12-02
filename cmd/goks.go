@@ -2,42 +2,45 @@ package main
 
 import (
 	"flag"
-	"fmt"
-	"os"
+	"io/ioutil"
+	"log"
 
-	"github.com/kong/goks/internal/vm"
+	"github.com/kong/goks/plugin"
+)
+
+var (
+	schemaFile = flag.String("schema-file", "schema.lua", "schema to use")
+	pluginFile = flag.String("plugin-file", "plugin.json", "plugin to verify")
 )
 
 func main() {
-	os.Exit(mainAux())
-}
-
-func mainAux() int {
 	flag.Parse()
-
-	if flag.NArg() != 1 {
-		fmt.Println("please provide a script to run")
-		return 1
-	}
-	script := flag.Arg(0)
-
-	luaVM, err := vm.New()
+	validator, err := plugin.NewValidator()
 	if err != nil {
-		fmt.Println(err)
-		return 1
+		log.Fatalln("failed to create a VM:", err)
 	}
-	file, err := os.Open(script)
+	schema, err := ioutil.ReadFile(*schemaFile)
 	if err != nil {
-		fmt.Println(err)
-		return 1
+		log.Fatalln("failed to read schema file:", err)
 	}
-	defer file.Close()
+	err = validator.LoadSchema(string(schema))
+	if err != nil {
+		log.Fatalln("failed to load schema:", err)
+	}
 
-	ret, err := luaVM.Execute(file, script)
+	p, err := ioutil.ReadFile(*pluginFile)
 	if err != nil {
-		fmt.Println(err.Error())
-		return 1
+		log.Fatalln("failed to read plugin file:", err)
 	}
-	fmt.Println(ret)
-	return 0
+	plugin := string(p)
+
+	plugin, err = validator.ProcessAutoFields(plugin)
+	if err != nil {
+		log.Fatalln("failed to populate defaults:", err)
+	}
+
+	_, err = validator.Validate(plugin)
+	if err != nil {
+		log.Fatalln("failed to validate plugin:", err)
+	}
 }
