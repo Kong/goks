@@ -21,8 +21,9 @@ func (v *Validator) LoadSchema(schema string) error {
 	return err
 }
 
-func (v *Validator) Validate(pluginInstance string) (string, error) {
-	return v.vm.CallByParams("validate", pluginInstance)
+func (v *Validator) Validate(pluginInstance string) error {
+	_, err := v.vm.CallByParams("validate", pluginInstance)
+	return err
 }
 
 func (v *Validator) ProcessAutoFields(pluginInstance string) (string, error) {

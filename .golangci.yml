@@ -59,3 +59,6 @@ issues:
     - forbidigo
     text:  "fmt.Println" # ignore err not checked in test files
     path: cmd/goks.go
+  - linters:
+    - errcheck
+    path: _test.go

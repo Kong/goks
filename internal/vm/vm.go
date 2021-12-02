@@ -3,6 +3,7 @@ package vm
 import (
 	"fmt"
 	"io"
+	"sync"
 
 	"github.com/kong/goks"
 	"github.com/kong/goks/internal/fs"
@@ -16,7 +17,8 @@ import (
 )
 
 type VM struct {
-	l *lua.LState
+	l  *lua.LState
+	mu sync.Mutex
 }
 
 func New() (*VM, error) {
@@ -43,21 +45,20 @@ func (v *VM) Close() {
 	v.l.Close()
 }
 
-func (v *VM) Execute(file io.Reader, filename string) (string, error) {
+func (v *VM) Execute(file io.Reader, filename string) error {
 	l := v.l
 	fn, err := l.Load(file, filename)
 	if err != nil {
-		return "", err
+		return err
 	}
 	l.Push(fn)
 	err = l.PCall(0, lua.MultRet, nil)
-	if err != nil {
-		return "", err
-	}
-	return "", nil
+	return err
 }
 
 func (v *VM) CallByParams(name string, args ...string) (string, error) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
 	luaArgs := make([]lua.LValue, 0, len(args))
 	for _, arg := range args {
 		luaArgs = append(luaArgs, lua.LString(arg))

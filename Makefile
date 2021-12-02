@@ -9,5 +9,5 @@ all: lint test
 
 .PHONY: test
 test:
-	go test -count 1 -p 1 -race ./...
+	go test -race ./...
 

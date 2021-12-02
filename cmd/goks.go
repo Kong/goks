@@ -39,7 +39,7 @@ func main() {
 		log.Fatalln("failed to populate defaults:", err)
 	}
 
-	_, err = validator.Validate(plugin)
+	err = validator.Validate(plugin)
 	if err != nil {
 		log.Fatalln("failed to validate plugin:", err)
 	}
