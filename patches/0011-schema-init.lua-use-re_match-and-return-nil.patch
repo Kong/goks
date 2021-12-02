@@ -1,0 +1,47 @@
+From f10bc99c95072d8030dabd7110134fabc80f0357 Mon Sep 17 00:00:00 2001
+From: Harry Bagdi <harrybagdi@gmail.com>
+Date: Thu, 2 Dec 2021 10:24:03 -0800
+Subject: [PATCH] schema/init.lua: use re_match and return nil
+
+ngx.null is a string with value "null". This causes all the unpopulated
+fields to get "null" as their values where  they should really only be
+`nil`.
+
+using re_match as the UUID match is what ensures that is a UUID.
+---
+ lua-tree/share/lua/5.1/kong/db/schema/init.lua | 5 ++---
+ 1 file changed, 2 insertions(+), 3 deletions(-)
+
+diff --git a/lua-tree/share/lua/5.1/kong/db/schema/init.lua b/lua-tree/share/lua/5.1/kong/db/schema/init.lua
+index 32e513f..23368f8 100644
+--- a/lua-tree/share/lua/5.1/kong/db/schema/init.lua
++++ b/lua-tree/share/lua/5.1/kong/db/schema/init.lua
+@@ -7,7 +7,6 @@ local uuid         = require "go.uuid".generate
+ 
+ local setmetatable = setmetatable
+ local re_match     = require "go.re2".match
+-local re_find      = require "go.re2".find
+ local concat       = table.concat
+ local insert       = table.insert
+ local format       = string.format
+@@ -316,7 +315,7 @@ Schema.validators = {
+     if #value ~= 36 then
+       return nil
+     end
+-    return re_find(value, uuid_regex) and true or nil
++    return re_match(value, uuid_regex) and true or nil
+   end,
+ 
+   contains = function(array, wanted)
+@@ -1003,7 +1002,7 @@ local function handle_missing_field(field, value, opts)
+ 
+   -- If not `required`, it is nullable.
+   if field.required ~= true then
+-    return null
++    return nil
+   end
+ 
+   if field.abstract then
+-- 
+2.25.1
+
