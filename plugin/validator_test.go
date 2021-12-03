@@ -5,16 +5,32 @@ import (
 	"io/ioutil"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
+
+type KongPlugin struct {
+	CreatedAt *int                   `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+	ID        string                 `json:"id,omitempty" yaml:"id,omitempty"`
+	Name      string                 `json:"name,omitempty" yaml:"name,omitempty"`
+	Config    map[string]interface{} `json:"config,omitempty" yaml:"config,omitempty"`
+	Enabled   bool                   `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+	Protocols []string               `json:"protocols,omitempty" yaml:"protocols,omitempty"`
+	Tags      []string               `json:"tags,omitempty" yaml:"tags,omitempty"`
+}
 
 func TestValidator_LoadSchema(t *testing.T) {
 	v, err := NewValidator()
 	assert.Nil(t, err)
 
 	t.Run("loads a good schema", func(t *testing.T) {
-		schema, err := ioutil.ReadFile("testdata/good_schema.lua")
+		schema, err := ioutil.ReadFile("testdata/key-auth.lua")
+		assert.Nil(t, err)
+		assert.Nil(t, v.LoadSchema(string(schema)))
+	})
+	t.Run("loads a schema with entity checks", func(t *testing.T) {
+		schema, err := ioutil.ReadFile("testdata/rate-limiting.lua")
 		assert.Nil(t, err)
 		assert.Nil(t, v.LoadSchema(string(schema)))
 	})
@@ -38,6 +54,12 @@ func TestValidator_Validate(t *testing.T) {
 	v, err := NewValidator()
 	assert.Nil(t, err)
 	schema, err := ioutil.ReadFile("testdata/uuid_schema.lua")
+	assert.Nil(t, err)
+	assert.Nil(t, v.LoadSchema(string(schema)))
+	schema, err = ioutil.ReadFile("testdata/key-auth.lua")
+	assert.Nil(t, err)
+	assert.Nil(t, v.LoadSchema(string(schema)))
+	schema, err = ioutil.ReadFile("testdata/rate-limiting.lua")
 	assert.Nil(t, err)
 	assert.Nil(t, v.LoadSchema(string(schema)))
 	t.Run("validates a uuid correctly", func(t *testing.T) {
@@ -65,12 +87,62 @@ func TestValidator_Validate(t *testing.T) {
 		err := v.Validate(plugin)
 		assert.Nil(t, err)
 	})
+	t.Run("errors out on unexpected keys", func(t *testing.T) {
+		plugin := `{
+                     "name": "key-auth",
+                     "config": {
+						"foo": "bar"
+                     },
+                     "enabled": true,
+                     "protocols": [ "http"]
+                   }`
+		err := v.Validate(plugin)
+		assert.Equal(t, `{"config":{"foo":"unknown field"}}`, err.Error())
+	})
+	t.Run("errors out when entity checkers fail", func(t *testing.T) {
+		plugin := `{
+                     "name": "rate-limiting",
+                     "config": {},
+                     "enabled": true,
+                     "protocols": [ "http"]
+                   }`
+		err := v.Validate(plugin)
+		assert.Equal(t, `{"@entity":["at least one of these fields `+
+			`must be non-empty: 'config.second', 'config.minute', `+
+			`'config.hour', 'config.day', 'config.month', 'config.year'"]}`,
+			err.Error())
+	})
+	t.Run("errors out when multiple entity checkers fail", func(t *testing.T) {
+		plugin := `{
+                     "name": "rate-limiting",
+                     "config": { "policy": "redis"},
+                     "enabled": true,
+                     "protocols": [ "http"]
+                   }`
+		err := v.Validate(plugin)
+		expected := `{
+  "@entity": [
+    "at least one of these fields must be non-empty: 'config.second', ` +
+			`'config.minute', 'config.hour', 'config.day', 'config.month', 'config.year'",
+    "failed conditional validation given value of field 'config.policy'",
+    "failed conditional validation given value of field 'config.policy'",
+    "failed conditional validation given value of field 'config.policy'"
+  ],
+  "config": {
+    "redis_host": "required field missing",
+    "redis_port": "required field missing",
+    "redis_timeout": "required field missing"
+  }
+}
+`
+		assert.JSONEq(t, expected, err.Error())
+	})
 }
 
 func TestValidator_ProcessAutoFields(t *testing.T) {
 	v, err := NewValidator()
 	assert.Nil(t, err)
-	schema, err := ioutil.ReadFile("testdata/good_schema.lua")
+	schema, err := ioutil.ReadFile("testdata/key-auth.lua")
 	assert.Nil(t, err)
 	assert.Nil(t, v.LoadSchema(string(schema)))
 	t.Run("populates defaults for key-auth plugin", func(t *testing.T) {
@@ -80,11 +152,26 @@ func TestValidator_ProcessAutoFields(t *testing.T) {
                    }`
 		plugin, err := v.ProcessAutoFields(plugin)
 		assert.Nil(t, err)
-		expected := `{"config":{"hide_credentials":false,"key_in_body":false,` +
-			`"key_in_header":true,"key_in_query":true,"key_names":["apikey"],` +
-			`"run_on_preflight":true},"enabled":true,"name":"key-auth",` +
-			`"protocols":["grpc","grpcs","http","https"]}`
-		assert.Equal(t, expected, plugin)
+
+		var kongPlugin KongPlugin
+		assert.Nil(t, json.Unmarshal([]byte(plugin), &kongPlugin))
+		assert.LessOrEqual(t, *kongPlugin.CreatedAt, int(time.Now().Unix()))
+		assert.NotEmpty(t, kongPlugin.ID)
+		assert.Len(t, kongPlugin.ID, 36)
+		assert.Equal(t, "key-auth", kongPlugin.Name)
+		assert.ElementsMatch(t, []string{"http", "https", "grpc", "grpcs"},
+			kongPlugin.Protocols)
+		assert.Equal(t, false, kongPlugin.Config["hide_credentials"])
+		assert.Equal(t, false, kongPlugin.Config["key_in_body"])
+		assert.Equal(t, true, kongPlugin.Config["key_in_header"])
+		assert.Equal(t, true, kongPlugin.Config["key_in_query"])
+		assert.Equal(t, true, kongPlugin.Enabled)
+		assert.Equal(t, []interface{}{"apikey"}, kongPlugin.Config["key_names"])
+		assert.Nil(t, kongPlugin.Config["anonymous"])
+		assert.Nil(t, kongPlugin.Config["consumer"])
+		assert.Nil(t, kongPlugin.Config["service"])
+		assert.Nil(t, kongPlugin.Config["route"])
+		assert.Nil(t, kongPlugin.Config["tags"])
 	})
 }
 
@@ -110,25 +197,4 @@ func getErrForField(e error, path string) string {
 		}
 	}
 	return ""
-}
-
-func BenchmarkValidator_Validate(b *testing.B) {
-	v, err := NewValidator()
-	assert.Nil(b, err)
-	schema, err := ioutil.ReadFile("testdata/good_schema.lua")
-	assert.Nil(b, err)
-	assert.Nil(b, v.LoadSchema(string(schema)))
-	b.ResetTimer()
-	plugin := `{
-  "name": "key-auth",
-  "config": {
-    "foo": "bar",
-    "key_names": "broken-on-purpose",
-    "key_in_body": true
-  }
-}`
-	for i := 0; i < b.N; i++ {
-		err := v.Validate(plugin)
-		assert.NotNil(b, err)
-	}
 }

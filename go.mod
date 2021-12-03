@@ -17,3 +17,5 @@ require (
 )
 
 replace github.com/yuin/gopher-lua => github.com/hbagdi/gopher-lua v0.0.0-20211129210354-3e4a277fb892
+
+replace github.com/layeh/gopher-json => github.com/hbagdi/gopher-json v0.0.0-20211203171840-04cc2cd39713

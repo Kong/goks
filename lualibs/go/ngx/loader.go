@@ -4,11 +4,21 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
+func NullString(l *lua.LState) int {
+	l.Push(lua.LString("null"))
+	return 1
+}
+
 func LoadNgx(l *lua.LState) {
 	ngx := l.NewTable()
-	// register other stuff
 	l.SetFuncs(ngx, api)
-	l.SetField(ngx, "null", lua.LString("null"))
+
+	// register ngx.null
+	d := l.NewUserData()
+	d.Metatable = l.NewTable()
+	mt := l.NewTable()
+	l.SetFuncs(mt, map[string]lua.LGFunction{"__tostring": NullString})
+	l.SetField(ngx, "null", d)
 	l.SetGlobal("ngx", ngx)
 }
 

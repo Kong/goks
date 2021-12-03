@@ -57,9 +57,8 @@ _G["process_auto_fields"] = function(plugin)
     return nil, err
   end
   local inspect = require "inspect"
-  local p = Plugins:process_auto_fields(tbl)
-  json_p = json.encode(p)
-  return json_p, nil
+  local p = Plugins:process_auto_fields(tbl, "insert")
+  return json.encode(p)
 end
 
 _G["load_plugin_schema"] = function(plugin_schema_string)
