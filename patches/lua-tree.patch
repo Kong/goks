@@ -1,0 +1,1075 @@
+From: Harry Bagdi <harrybagdi@gmail.com>
+Date: Fri, 3 Dec 2021 10:37:00 -0800
+Subject: lua-tree patches
+
+patched/url.lua:
+Kong's codebase uses Luasocket's url.lua for primarily parsing URLs.
+This file has been vendored from upstream because we don't support
+loading C libs in our Lua VMs.
+This file has been copied with minor modifications.
+Upstream repo: https://github.com/diegonehab/luasocket
+Upstream commit reference: 5b18e475f38fcf28429b1cc4b17baee3b9793a62
+
+
+pl/compat.lua:
+no config package in gopher-lua
+
+
+entities/certificates.lua:
+Since only plugin validation checks are required, disabling this check
+should result in no breakage.
+This change is required because the code loads the schema of
+certificates since service schema needs to be loaded (service schema is
+referenced from plugin schema).
+
+
+entities/services.lua:
+Use patched.url instead of socket.url
+
+
+schema/plugin_loader.lua:
+- use patched.url instead of socket.url
+- do not use plugin_server since it is not applicable in our case
+
+
+schema/entity.lua:
+- rework goto statements
+
+
+schema/init.lua:
+- rework goto statements
+- Use an empty lua table for cjson.array_mt, this can potentially
+  introduce serilialization errors
+- Use go.re2 instead of ngx.re
+- Use go.uuid instead of uuid
+- use re_match as UUID match intad of re_find
+- remove log statements
+
+
+schema/typedefs.lua:
+- use patched.url instead of socket.url
+- disable openssl
+
+
+tools/utils.lua:
+- Use go.uuid instead of uuid
+- Remove all code that uses the FFI interface
+- Use go.rand for random bytes
+- Use patched.url intead of socket.url
+- Use Lua 5.1 based xpcall
+- Use go.ipmatcher instead of resty.ipmatcher
+- Use go.re2 instead of ngx.re
+
+
+schema/metaschema.lua:
+- introduce encrypted field
+
+---
+diff --git a/lua-tree/share/lua/5.1/kong/db/schema/entities/certificates.lua b/lua-tree/share/lua/5.1/kong/db/schema/entities/certificates.lua
+index 31c4348..004a973 100644
+--- a/lua-tree/share/lua/5.1/kong/db/schema/entities/certificates.lua
++++ b/lua-tree/share/lua/5.1/kong/db/schema/entities/certificates.lua
+@@ -1,6 +1,4 @@
+ local typedefs = require "kong.db.schema.typedefs"
+-local openssl_pkey = require "resty.openssl.pkey"
+-local openssl_x509 = require "resty.openssl.x509"
+ 
+ 
+ local type = type
+@@ -24,51 +22,5 @@ return {
+ 
+   entity_checks = {
+     { mutually_required = { "cert_alt", "key_alt" } },
+-    { custom_entity_check = {
+-      field_sources = { "cert", "key" },
+-      fn = function(entity)
+-        local cert = openssl_x509.new(entity.cert)
+-        local key = openssl_pkey.new(entity.key)
+-
+-        if cert:get_pubkey():to_PEM() ~= key:to_PEM("public") then
+-          return nil, "certificate does not match key"
+-        end
+-
+-        return true
+-      end,
+-    } },
+-    { custom_entity_check = {
+-      field_sources = { "cert_alt", "key_alt" },
+-      fn = function(entity)
+-        if type(entity.cert_alt) == "string" and type(entity.key_alt) == "string" then
+-          local cert_alt = openssl_x509.new(entity.cert_alt)
+-          local key_alt = openssl_pkey.new(entity.key_alt)
+-
+-          if cert_alt:get_pubkey():to_PEM() ~= key_alt:to_PEM("public") then
+-            return nil, "alternative certificate does not match key"
+-          end
+-        end
+-
+-        return true
+-      end,
+-    } },
+-    { custom_entity_check = {
+-      field_sources = { "cert", "cert_alt" },
+-      fn = function(entity)
+-        if type(entity.cert) == "string" and type(entity.cert_alt) == "string" then
+-          local cert = openssl_x509.new(entity.cert)
+-          local cert_alt = openssl_x509.new(entity.cert_alt)
+-          local cert_type = cert:get_pubkey():get_key_type()
+-          local cert_alt_type = cert_alt:get_pubkey():get_key_type()
+-          if cert_type.id == cert_alt_type.id then
+-            return nil, "certificate and alternative certificate need to have " ..
+-                        "different type (e.g. RSA and ECDSA), the provided " ..
+-                        "certificates were both of the same type"
+-          end
+-        end
+-
+-        return true
+-      end,
+-    } },
+   }
+ }
+diff --git a/lua-tree/share/lua/5.1/kong/db/schema/entities/services.lua b/lua-tree/share/lua/5.1/kong/db/schema/entities/services.lua
+index b1093a2..0afc200 100644
+--- a/lua-tree/share/lua/5.1/kong/db/schema/entities/services.lua
++++ b/lua-tree/share/lua/5.1/kong/db/schema/entities/services.lua
+@@ -1,6 +1,6 @@
+ local typedefs = require "kong.db.schema.typedefs"
+ local Schema = require "kong.db.schema"
+-local url = require "socket.url"
++local url = require "patched.url"
+ 
+ 
+ local tostring = tostring
+diff --git a/lua-tree/share/lua/5.1/kong/db/schema/entity.lua b/lua-tree/share/lua/5.1/kong/db/schema/entity.lua
+index 0547aef..bf62e46 100644
+--- a/lua-tree/share/lua/5.1/kong/db/schema/entity.lua
++++ b/lua-tree/share/lua/5.1/kong/db/schema/entity.lua
+@@ -43,23 +43,21 @@ function Entity.new(definition)
+       return nil, entity_errors.NO_NILABLE:format(name)
+     end
+ 
+-    if field.abstract then
+-      goto continue
+-    end
++    if not field.abstract then
+ 
+-    if field.type == "map" then
+-      if field.keys.type ~= "string" then
+-        return nil, entity_errors.MAP_KEY_STRINGS_ONLY:format(name)
+-      end
++      if field.type == "map" then
++        if field.keys.type ~= "string" then
++          return nil, entity_errors.MAP_KEY_STRINGS_ONLY:format(name)
++        end
+ 
+-    elseif field.type == "record" then
+-      make_records_required(field)
++      elseif field.type == "record" then
++        make_records_required(field)
+ 
+-    elseif field.type == "function" then
+-      return nil, entity_errors.NO_FUNCTIONS:format(name)
+-    end
++      elseif field.type == "function" then
++        return nil, entity_errors.NO_FUNCTIONS:format(name)
++      end
+ 
+-    ::continue::
++    end
+   end
+ 
+   self.new_subschema = Entity.new_subschema
+diff --git a/lua-tree/share/lua/5.1/kong/db/schema/init.lua b/lua-tree/share/lua/5.1/kong/db/schema/init.lua
+index 734fbd5..0ddffad 100644
+--- a/lua-tree/share/lua/5.1/kong/db/schema/init.lua
++++ b/lua-tree/share/lua/5.1/kong/db/schema/init.lua
+@@ -1,12 +1,12 @@
+ local tablex       = require "pl.tablex"
+ local pretty       = require "pl.pretty"
+ local utils        = require "kong.tools.utils"
+-local cjson        = require "cjson"
++local cjson        = { array_mt = {} } --- TODO(hbagdi) XXX analyze the impact
++local uuid         = require "go.uuid".generate
+ 
+ 
+ local setmetatable = setmetatable
+-local re_match     = ngx.re.match
+-local re_find      = ngx.re.find
++local re_match     = require "go.re2".match
+ local concat       = table.concat
+ local insert       = table.insert
+ local format       = string.format
+@@ -315,7 +315,7 @@ Schema.validators = {
+     if #value ~= 36 then
+       return nil
+     end
+-    return re_find(value, uuid_regex, "ioj") and true or nil
++    return re_match(value, uuid_regex) and true or nil
+   end,
+ 
+   contains = function(array, wanted)
+@@ -1100,10 +1100,8 @@ validate_fields = function(self, input)
+       pok, err, errors[k] = pcall(self.validate_field, self, input, v)
+       if not pok then
+         errors[k] = validation_errors.SCHEMA_CANNOT_VALIDATE
+-        kong.log.debug(errors[k], ": ", err)
+       end
+     elseif is_ttl then
+-      kong.log.debug("ignoring validation on ttl field")
+     else
+       field, err = resolve_field(self, k, field, subschema)
+       if field then
+@@ -2063,6 +2061,39 @@ local function allow_record_fields_by_name(record, loop)
+ end
+ 
+ 
++local function get_transform_args(input, original_input, output, transformation)
++  local args = {}
++  local argc = 0
++  for _, input_field_name in ipairs(transformation.input) do
++    local value = get_field(output or original_input or input, input_field_name)
++    if is_nonempty(value) then
++      argc = argc + 1
++      if original_input then
++        args[argc] = get_field(output or input, input_field_name)
++      else
++        args[argc] = value
++      end
++
++    else
++      return nil
++    end
++  end
++
++  if transformation.needs then
++    for _, need in ipairs(transformation.needs) do
++      local value = get_field(output or input, need)
++      if is_nonempty(value) then
++        argc = argc + 1
++        args[argc] = get_field(output or input, need)
++
++      else
++        return nil
++      end
++    end
++  end
++  return args
++end
++
+ --- Run transformations on fields.
+ -- @param input The input table.
+ -- @param original_input The original input for transformation detection.
+@@ -2084,48 +2115,19 @@ function Schema:transform(input, original_input, context)
+       transform = transformation.on_write
+     end
+ 
+-    if not transform then
+-      goto next
+-    end
++    if transform then
++      local args = get_transform_args(input, original_input, output, transformation)
+ 
+-    local args = {}
+-    local argc = 0
+-    for _, input_field_name in ipairs(transformation.input) do
+-      local value = get_field(output or original_input or input, input_field_name)
+-      if is_nonempty(value) then
+-        argc = argc + 1
+-        if original_input then
+-          args[argc] = get_field(output or input, input_field_name)
+-        else
+-          args[argc] = value
++      if args then
++        local data, err = transform(unpack(args))
++        if err then
++          return nil, validation_errors.TRANSFORMATION_ERROR:format(err)
+         end
+ 
+-      else
+-        goto next
++        output = self:merge_values(data, output or input)
+       end
+     end
+ 
+-    if transformation.needs then
+-      for _, need in ipairs(transformation.needs) do
+-        local value = get_field(output or input, need)
+-        if is_nonempty(value) then
+-          argc = argc + 1
+-          args[argc] = get_field(output or input, need)
+-
+-        else
+-          goto next
+-        end
+-      end
+-    end
+-
+-    local data, err = transform(unpack(args))
+-    if err then
+-      return nil, validation_errors.TRANSFORMATION_ERROR:format(err)
+-    end
+-
+-    output = self:merge_values(data, output or input)
+-
+-    ::next::
+   end
+ 
+   return output or input
+diff --git a/lua-tree/share/lua/5.1/kong/db/schema/metaschema.lua b/lua-tree/share/lua/5.1/kong/db/schema/metaschema.lua
+index 6abb1fc..6ac43d1 100644
+--- a/lua-tree/share/lua/5.1/kong/db/schema/metaschema.lua
++++ b/lua-tree/share/lua/5.1/kong/db/schema/metaschema.lua
+@@ -71,6 +71,7 @@ local field_schema = {
+   { legacy = { type = "boolean" }, },
+   { immutable = { type = "boolean" }, },
+   { err = { type = "string" } },
++  { encrypted = { type = "boolean" }, },
+ }
+ 
+ for _, field in ipairs(validators) do
+diff --git a/lua-tree/share/lua/5.1/kong/db/schema/plugin_loader.lua b/lua-tree/share/lua/5.1/kong/db/schema/plugin_loader.lua
+index abcab8c..96e6d3d 100644
+--- a/lua-tree/share/lua/5.1/kong/db/schema/plugin_loader.lua
++++ b/lua-tree/share/lua/5.1/kong/db/schema/plugin_loader.lua
+@@ -1,9 +1,8 @@
+ local MetaSchema = require "kong.db.schema.metaschema"
+-local socket_url = require "socket.url"
++local socket_url = require "patched.url"
+ local typedefs = require "kong.db.schema.typedefs"
+ local Entity = require "kong.db.schema.entity"
+ local utils = require "kong.tools.utils"
+-local plugin_servers = require "kong.runloop.plugin_servers"
+ 
+ 
+ local plugin_loader = {}
+@@ -183,10 +182,6 @@ end
+ function plugin_loader.load_subschema(parent_schema, plugin, errors)
+   local plugin_schema = "kong.plugins." .. plugin .. ".schema"
+   local ok, schema = utils.load_module_if_exists(plugin_schema)
+-  if not ok then
+-    ok, schema = plugin_servers.load_schema(plugin)
+-  end
+-
+   if not ok then
+     return nil, "no configuration schema found for plugin: " .. plugin
+   end
+diff --git a/lua-tree/share/lua/5.1/kong/db/schema/typedefs.lua b/lua-tree/share/lua/5.1/kong/db/schema/typedefs.lua
+index c1a150a..3d6c639 100644
+--- a/lua-tree/share/lua/5.1/kong/db/schema/typedefs.lua
++++ b/lua-tree/share/lua/5.1/kong/db/schema/typedefs.lua
+@@ -1,10 +1,8 @@
+ --- A library of ready-to-use type synonyms to use in schema definitions.
+ -- @module kong.db.schema.typedefs
+ local utils = require "kong.tools.utils"
+-local openssl_pkey = require "resty.openssl.pkey"
+-local openssl_x509 = require "resty.openssl.x509"
+ local Schema = require "kong.db.schema"
+-local socket_url = require "socket.url"
++local socket_url = require "patched.url"
+ local constants = require "kong.constants"
+ 
+ 
+@@ -216,22 +214,12 @@ end
+ 
+ 
+ local function validate_certificate(cert)
+-  local _, err = openssl_x509.new(cert)
+-  if err then
+-    return nil, "invalid certificate: " .. err
+-  end
+-
+-  return true
++  return nil, "openssl: not yet implemented"
+ end
+ 
+ 
+ local function validate_key(key)
+-  local _, err =  openssl_pkey.new(key)
+-  if err then
+-    return nil, "invalid key: " .. err
+-  end
+-
+-  return true
++  return nil, "openssl: not yet implemented"
+ end
+ 
+ 
+diff --git a/lua-tree/share/lua/5.1/kong/tools/utils.lua b/lua-tree/share/lua/5.1/kong/tools/utils.lua
+index 301d8d4..a1d6bbc 100644
+--- a/lua-tree/share/lua/5.1/kong/tools/utils.lua
++++ b/lua-tree/share/lua/5.1/kong/tools/utils.lua
+@@ -8,18 +8,11 @@
+ -- @license [Apache 2.0](https://opensource.org/licenses/Apache-2.0)
+ -- @module kong.tools.utils
+ 
+-local ffi = require "ffi"
+-local uuid = require "resty.jit-uuid"
++local uuid = require "go.uuid"
+ local pl_stringx = require "pl.stringx"
+ local pl_stringio = require "pl.stringio"
+ local pl_utils = require "pl.utils"
+-local pl_path = require "pl.path"
+-local zlib = require "ffi-zlib"
+ 
+-local C             = ffi.C
+-local ffi_fill      = ffi.fill
+-local ffi_new       = ffi.new
+-local ffi_str       = ffi.string
+ local type          = type
+ local pairs         = pairs
+ local ipairs        = ipairs
+@@ -33,32 +26,10 @@ local fmt           = string.format
+ local find          = string.find
+ local gsub          = string.gsub
+ local split         = pl_stringx.split
+-local re_find       = ngx.re.find
+-local re_match      = ngx.re.match
+-local inflate_gzip  = zlib.inflateGzip
+-local deflate_gzip  = zlib.deflateGzip
++local re_find       = require "go.re2".find
++local re_match      = require "go.re2".match
+ local stringio_open = pl_stringio.open
+ 
+-ffi.cdef[[
+-typedef unsigned char u_char;
+-
+-int gethostname(char *name, size_t len);
+-
+-int RAND_bytes(u_char *buf, int num);
+-
+-unsigned long ERR_get_error(void);
+-void ERR_load_crypto_strings(void);
+-void ERR_free_strings(void);
+-
+-const char *ERR_reason_error_string(unsigned long e);
+-
+-int open(const char * filename, int flags, int mode);
+-size_t read(int fd, void *buf, size_t count);
+-int write(int fd, const void *ptr, int numbytes);
+-int close(int fd);
+-char *strerror(int errnum);
+-]]
+-
+ local _M = {}
+ 
+ --- splits a string.
+@@ -112,111 +83,14 @@ do
+   end
+ end
+ 
+-do
+-  local trusted_certs_paths = {
+-    "/etc/ssl/certs/ca-certificates.crt",                -- Debian/Ubuntu/Gentoo
+-    "/etc/pki/tls/certs/ca-bundle.crt",                  -- Fedora/RHEL 6
+-    "/etc/ssl/ca-bundle.pem",                            -- OpenSUSE
+-    "/etc/pki/tls/cacert.pem",                           -- OpenELEC
+-    "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem", -- CentOS/RHEL 7
+-    "/etc/ssl/cert.pem",                                 -- OpenBSD, Alpine
+-  }
+-
+-  function _M.get_system_trusted_certs_filepath()
+-    for _, path in ipairs(trusted_certs_paths) do
+-      if pl_path.exists(path) then
+-        return path
+-      end
+-    end
+-
+-    return nil,
+-           "Could not find trusted certs file in " ..
+-           "any of the `system`-predefined locations. " ..
+-           "Please install a certs file there or set " ..
+-           "lua_ssl_trusted_certificate to an " ..
+-           "specific filepath instead of `system`"
+-  end
+-end
+-
+-
+-local get_rand_bytes
+-
+-do
+-  local ngx_log = ngx.log
+-  local WARN    = ngx.WARN
+-
+-  local system_constants = require "lua_system_constants"
+-  local O_RDONLY = system_constants.O_RDONLY()
+-  local bytes_buf_t = ffi.typeof "char[?]"
+-
+-  local function urandom_bytes(buf, size)
+-    local fd = ffi.C.open("/dev/urandom", O_RDONLY, 0) -- mode is ignored
+-    if fd < 0 then
+-      ngx_log(WARN, "Error opening random fd: ",
+-                    ffi_str(ffi.C.strerror(ffi.errno())))
+-
+-      return false
+-    end
+-
+-    local res = ffi.C.read(fd, buf, size)
+-    if res <= 0 then
+-      ngx_log(WARN, "Error reading from urandom: ",
+-                    ffi_str(ffi.C.strerror(ffi.errno())))
+-
+-      return false
+-    end
+-
+-    if ffi.C.close(fd) ~= 0 then
+-      ngx_log(WARN, "Error closing urandom: ",
+-                    ffi_str(ffi.C.strerror(ffi.errno())))
+-    end
+-
+-    return true
+-  end
+ 
+-  -- try to get n_bytes of CSPRNG data, first via /dev/urandom,
+-  -- and then falling back to OpenSSL if necessary
+-  get_rand_bytes = function(n_bytes, urandom)
+-    local buf = ffi_new(bytes_buf_t, n_bytes)
+-    ffi_fill(buf, n_bytes, 0x0)
+-
+-    -- only read from urandom if we were explicitly asked
+-    if urandom then
+-      local rc = urandom_bytes(buf, n_bytes)
+-
+-      -- if the read of urandom was successful, we returned true
+-      -- and buf is filled with our bytes, so return it as a string
+-      if rc then
+-        return ffi_str(buf, n_bytes)
+-      end
+-    end
+-
+-    if C.RAND_bytes(buf, n_bytes) == 0 then
+-      -- get error code
+-      local err_code = C.ERR_get_error()
+-      if err_code == 0 then
+-        return nil, "could not get SSL error code from the queue"
+-      end
+-
+-      -- get human-readable error string
+-      C.ERR_load_crypto_strings()
+-      local err = C.ERR_reason_error_string(err_code)
+-      C.ERR_free_strings()
+-
+-      return nil, "could not get random bytes (" ..
+-                  "reason:" .. ffi_str(err) .. ") "
+-    end
+-
+-    return ffi_str(buf, n_bytes)
+-  end
+-
+-  _M.get_rand_bytes = get_rand_bytes
+-end
++local get_rand_bytes = require "go.rand".get_rand_bytes
++_M.get_rand_bytes = get_rand_bytes
+ 
+ --- Generates a v4 uuid.
+ -- @function uuid
+ -- @return string with uuid
+-_M.uuid = uuid.generate_v4
++_M.uuid = uuid.generate
+ 
+ --- Generates a random unique string
+ -- @return string  The random string (a chunk of base64ish-encoded random bytes)
+@@ -249,7 +123,7 @@ function _M.is_valid_uuid(str)
+   if type(str) ~= 'string' or #str ~= 36 then
+     return false
+   end
+-  return re_find(str, uuid_regex, 'ioj') ~= nil
++  return re_find(str, uuid_regex) ~= nil
+ end
+ 
+ -- function below is more acurate, but invalidates previously accepted uuids and hence causes
+@@ -260,7 +134,7 @@ end
+ --end
+ 
+ do
+-  local url = require "socket.url"
++  local url = require "patched.url"
+ 
+   --- URL escape and format key and value
+   -- values should be already decoded or the `raw` option should be passed to prevent double-encoding
+@@ -695,7 +569,7 @@ end
+ -- @return success A boolean indicating wether the module was found.
+ -- @return module The retrieved module, or the error in case of a failure
+ function _M.load_module_if_exists(module_name)
+-  local status, res = xpcall(require, debug.traceback, module_name)
++  local status, res = xpcall(function() return require(module_name) end, debug.traceback)
+   if status then
+     return true, res
+   -- Here we match any character because if a module has a dash '-' in its name, we would need to escape it.
+@@ -731,7 +605,7 @@ end
+ 
+ 
+ do
+-  local ipmatcher =  require "resty.ipmatcher"
++  local ipmatcher =  require "go.ipmatcher"
+   local sub = string.sub
+ 
+   local ipv4_prefixes = {}
+@@ -1021,7 +895,7 @@ _M.validate_header_name = function(name)
+     return nil, "no header name provided"
+   end
+ 
+-  if re_match(name, "^[a-zA-Z0-9-_]+$", "jo") then
++  if re_match(name, "^[a-zA-Z0-9-_]+$") then
+     return name
+   end
+ 
+@@ -1039,7 +913,7 @@ _M.validate_cookie_name = function(name)
+     return nil, "no cookie name provided"
+   end
+ 
+-  if re_match(name, "^[a-zA-Z0-9-_]+$", "jo") then
++  if re_match(name, "^[a-zA-Z0-9-_]+$") then
+     return name
+   end
+ 
+@@ -1172,82 +1046,6 @@ function _M.bytes_to_str(bytes, unit, scale)
+ end
+ 
+ 
+-do
+-  local NGX_ERROR = ngx.ERROR
+-
+-  if not pcall(ffi.typeof, "ngx_uint_t") then
+-    ffi.cdef [[
+-      typedef uintptr_t ngx_uint_t;
+-    ]]
+-  end
+-
+-  -- ngx_str_t defined by lua-resty-core
+-  local s = ffi.new("ngx_str_t[1]")
+-  s[0].data = "10"
+-  s[0].len = 2
+-
+-  if not pcall(function() C.ngx_parse_time(s, 0) end) then
+-    ffi.cdef [[
+-      ngx_int_t ngx_parse_time(ngx_str_t *line, ngx_uint_t is_sec);
+-    ]]
+-  end
+-
+-  function _M.nginx_conf_time_to_seconds(str)
+-    s[0].data = str
+-    s[0].len = #str
+-
+-    local ret = C.ngx_parse_time(s, 1)
+-    if ret == NGX_ERROR then
+-      error("bad argument #1 'str'", 2)
+-    end
+-
+-    return tonumber(ret, 10)
+-  end
+-end
+-
+-
+-do
+-  -- lua-ffi-zlib allocated buffer of length +1,
+-  -- so use 64KB - 1 instead
+-  local GZIP_CHUNK_SIZE = 65535
+-
+-  local function gzip_helper(op, input)
+-    local f = stringio_open(input)
+-    local output_table = {}
+-    local output_table_n = 0
+-
+-    local res, err = op(function(size)
+-      return f:read(size)
+-    end,
+-    function(res)
+-      output_table_n = output_table_n + 1
+-      output_table[output_table_n] = res
+-    end, GZIP_CHUNK_SIZE)
+-
+-    if not res then
+-      return nil, err
+-    end
+-
+-    return concat(output_table)
+-  end
+-
+-  --- Gzip compress the content of a string
+-  -- @tparam string str the uncompressed string
+-  -- @return gz (string) of the compressed content, or nil, err to if an error occurs
+-  function _M.deflate_gzip(str)
+-    return gzip_helper(deflate_gzip, str)
+-  end
+-
+-
+-  --- Gzip decompress the content of a string
+-  -- @tparam string gz the Gzip compressed string
+-  -- @return str (string) of the decompressed content, or nil, err to if an error occurs
+-  function _M.inflate_gzip(gz)
+-    return gzip_helper(inflate_gzip, gz)
+-  end
+-end
+-
+-
+ local get_mime_type
+ local get_error_template
+ do
+diff --git a/lua-tree/share/lua/5.1/patched/url.lua b/lua-tree/share/lua/5.1/patched/url.lua
+new file mode 100644
+index 0000000..96ad36d
+--- /dev/null
++++ b/lua-tree/share/lua/5.1/patched/url.lua
+@@ -0,0 +1,349 @@
++-- LuaSocket 3.0 license
++-- Copyright © 2004-2013 Diego Nehab
++-- 
++-- Permission is hereby granted, free of charge, to any person obtaining a
++-- copy of this software and associated documentation files (the "Software"),
++-- to deal in the Software without restriction, including without limitation
++-- the rights to use, copy, modify, merge, publish, distribute, sublicense,
++-- and/or sell copies of the Software, and to permit persons to whom the
++-- Software is furnished to do so, subject to the following conditions:
++-- 
++-- The above copyright notice and this permission notice shall be included in
++-- all copies or substantial portions of the Software.
++-- 
++-- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++-- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++-- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++-- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++-- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++-- FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
++-- DEALINGS IN THE SOFTWARE.
++-----------------------------------------------------------------------------
++-- URI parsing, composition and relative URL resolution
++-- LuaSocket toolkit.
++-- Author: Diego Nehab
++-----------------------------------------------------------------------------
++
++-----------------------------------------------------------------------------
++-- Declare module
++-----------------------------------------------------------------------------
++local string = require("string")
++local base = _G
++local table = require("table")
++local _M = {}
++
++-----------------------------------------------------------------------------
++-- Module version
++-----------------------------------------------------------------------------
++_M._VERSION = "URL 1.0.3"
++
++-----------------------------------------------------------------------------
++-- Encodes a string into its escaped hexadecimal representation
++-- Input
++--   s: binary string to be encoded
++-- Returns
++--   escaped representation of string binary
++-----------------------------------------------------------------------------
++function _M.escape(s)
++    return (string.gsub(s, "([^A-Za-z0-9_])", function(c)
++        return string.format("%%%02x", string.byte(c))
++    end))
++end
++
++-----------------------------------------------------------------------------
++-- Protects a path segment, to prevent it from interfering with the
++-- url parsing.
++-- Input
++--   s: binary string to be encoded
++-- Returns
++--   escaped representation of string binary
++-----------------------------------------------------------------------------
++local function make_set(t)
++    local s = {}
++    for i,v in base.ipairs(t) do
++        s[t[i]] = 1
++    end
++    return s
++end
++
++-- these are allowed within a path segment, along with alphanum
++-- other characters must be escaped
++local segment_set = make_set {
++    "-", "_", ".", "!", "~", "*", "'", "(",
++    ")", ":", "@", "&", "=", "+", "$", ",",
++}
++
++local function protect_segment(s)
++    return string.gsub(s, "([^A-Za-z0-9_])", function (c)
++        if segment_set[c] then return c
++        else return string.format("%%%02X", string.byte(c)) end
++    end)
++end
++
++-----------------------------------------------------------------------------
++-- Unencodes a escaped hexadecimal string into its binary representation
++-- Input
++--   s: escaped hexadecimal string to be unencoded
++-- Returns
++--   unescaped binary representation of escaped hexadecimal  binary
++-----------------------------------------------------------------------------
++function _M.unescape(s)
++    return (string.gsub(s, "%%(%x%x)", function(hex)
++        return string.char(base.tonumber(hex, 16))
++    end))
++end
++
++-----------------------------------------------------------------------------
++-- Removes '..' and '.' components appropriately from a path.
++-- Input
++--   path
++-- Returns
++--   dot-normalized path
++local function remove_dot_components(path)
++    local marker = string.char(1)
++    repeat
++        local was = path
++        path = path:gsub('//', '/'..marker..'/', 1)
++    until path == was
++    repeat
++        local was = path
++        path = path:gsub('/%./', '/', 1)
++    until path == was
++    repeat
++        local was = path
++        path = path:gsub('[^/]+/%.%./([^/]+)', '%1', 1)
++    until path == was
++    path = path:gsub('[^/]+/%.%./*$', '')
++    path = path:gsub('/%.%.$', '/')
++    path = path:gsub('/%.$', '/')
++    path = path:gsub('^/%.%./', '/')
++    path = path:gsub(marker, '')
++    return path
++end
++
++-----------------------------------------------------------------------------
++-- Builds a path from a base path and a relative path
++-- Input
++--   base_path
++--   relative_path
++-- Returns
++--   corresponding absolute path
++-----------------------------------------------------------------------------
++local function absolute_path(base_path, relative_path)
++    if string.sub(relative_path, 1, 1) == "/" then
++      return remove_dot_components(relative_path) end
++    base_path = base_path:gsub("[^/]*$", "")
++    if not base_path:find'/$' then base_path = base_path .. '/' end
++    local path = base_path .. relative_path
++    path = remove_dot_components(path)
++    return path
++end
++
++-----------------------------------------------------------------------------
++-- Parses a url and returns a table with all its parts according to RFC 2396
++-- The following grammar describes the names given to the URL parts
++-- <url> ::= <scheme>://<authority>/<path>;<params>?<query>#<fragment>
++-- <authority> ::= <userinfo>@<host>:<port>
++-- <userinfo> ::= <user>[:<password>]
++-- <path> :: = {<segment>/}<segment>
++-- Input
++--   url: uniform resource locator of request
++--   default: table with default values for each field
++-- Returns
++--   table with the following fields, where RFC naming conventions have
++--   been preserved:
++--     scheme, authority, userinfo, user, password, host, port,
++--     path, params, query, fragment
++-- Obs:
++--   the leading '/' in {/<path>} is considered part of <path>
++-----------------------------------------------------------------------------
++function _M.parse(url, default)
++    -- initialize default parameters
++    local parsed = {}
++    for i,v in base.pairs(default or parsed) do parsed[i] = v end
++    -- empty url is parsed to nil
++    if not url or url == "" then return nil, "invalid url" end
++    -- remove whitespace
++    -- url = string.gsub(url, "%s", "")
++    -- get scheme
++    url = string.gsub(url, "^([%w][%w%+%-%.]*)%:",
++        function(s) parsed.scheme = s; return "" end)
++    -- get authority
++    url = string.gsub(url, "^//([^/]*)", function(n)
++        parsed.authority = n
++        return ""
++    end)
++    -- get fragment
++    url = string.gsub(url, "#(.*)$", function(f)
++        parsed.fragment = f
++        return ""
++    end)
++    -- get query string
++    url = string.gsub(url, "%?(.*)", function(q)
++        parsed.query = q
++        return ""
++    end)
++    -- get params
++    url = string.gsub(url, "%;(.*)", function(p)
++        parsed.params = p
++        return ""
++    end)
++    -- path is whatever was left
++    if url ~= "" then parsed.path = url end
++    local authority = parsed.authority
++    if not authority then return parsed end
++    authority = string.gsub(authority,"^([^@]*)@",
++        function(u) parsed.userinfo = u; return "" end)
++    authority = string.gsub(authority, ":([^:%]]*)$",
++        function(p) parsed.port = p; return "" end)
++    if authority ~= "" then 
++        -- IPv6?
++        parsed.host = string.match(authority, "^%[(.+)%]$") or authority 
++    end
++    local userinfo = parsed.userinfo
++    if not userinfo then return parsed end
++    userinfo = string.gsub(userinfo, ":([^:]*)$",
++        function(p) parsed.password = p; return "" end)
++    parsed.user = userinfo
++    return parsed
++end
++
++-----------------------------------------------------------------------------
++-- Rebuilds a parsed URL from its components.
++-- Components are protected if any reserved or unallowed characters are found
++-- Input
++--   parsed: parsed URL, as returned by parse
++-- Returns
++--   a stringing with the corresponding URL
++-----------------------------------------------------------------------------
++function _M.build(parsed)
++    --local ppath = _M.parse_path(parsed.path or "")
++    --local url = _M.build_path(ppath)
++    local url = parsed.path or ""
++    if parsed.params then url = url .. ";" .. parsed.params end
++    if parsed.query then url = url .. "?" .. parsed.query end
++    local authority = parsed.authority
++    if parsed.host then
++        authority = parsed.host
++        if string.find(authority, ":") then -- IPv6?
++            authority = "[" .. authority .. "]"
++        end
++        if parsed.port then authority = authority .. ":" .. base.tostring(parsed.port) end
++        local userinfo = parsed.userinfo
++        if parsed.user then
++            userinfo = parsed.user
++            if parsed.password then
++                userinfo = userinfo .. ":" .. parsed.password
++            end
++        end
++        if userinfo then authority = userinfo .. "@" .. authority end
++    end
++    if authority then url = "//" .. authority .. url end
++    if parsed.scheme then url = parsed.scheme .. ":" .. url end
++    if parsed.fragment then url = url .. "#" .. parsed.fragment end
++    -- url = string.gsub(url, "%s", "")
++    return url
++end
++
++-----------------------------------------------------------------------------
++-- Builds a absolute URL from a base and a relative URL according to RFC 2396
++-- Input
++--   base_url
++--   relative_url
++-- Returns
++--   corresponding absolute url
++-----------------------------------------------------------------------------
++function _M.absolute(base_url, relative_url)
++    local base_parsed
++    if base.type(base_url) == "table" then
++        base_parsed = base_url
++        base_url = _M.build(base_parsed)
++    else
++        base_parsed = _M.parse(base_url)
++    end
++    local result
++    local relative_parsed = _M.parse(relative_url)
++    if not base_parsed then
++        result = relative_url
++    elseif not relative_parsed then
++        result = base_url
++    elseif relative_parsed.scheme then
++        result = relative_url
++    else
++        relative_parsed.scheme = base_parsed.scheme
++        if not relative_parsed.authority then
++            relative_parsed.authority = base_parsed.authority
++            if not relative_parsed.path then
++                relative_parsed.path = base_parsed.path
++                if not relative_parsed.params then
++                    relative_parsed.params = base_parsed.params
++                    if not relative_parsed.query then
++                        relative_parsed.query = base_parsed.query
++                    end
++                end
++            else    
++                relative_parsed.path = absolute_path(base_parsed.path or "",
++                    relative_parsed.path)
++            end
++        end
++        result = _M.build(relative_parsed)
++    end
++    return remove_dot_components(result)
++end
++
++-----------------------------------------------------------------------------
++-- Breaks a path into its segments, unescaping the segments
++-- Input
++--   path
++-- Returns
++--   segment: a table with one entry per segment
++-----------------------------------------------------------------------------
++function _M.parse_path(path)
++    local parsed = {}
++    path = path or ""
++    --path = string.gsub(path, "%s", "")
++    string.gsub(path, "([^/]+)", function (s) table.insert(parsed, s) end)
++    for i = 1, #parsed do
++        parsed[i] = _M.unescape(parsed[i])
++    end
++    if string.sub(path, 1, 1) == "/" then parsed.is_absolute = 1 end
++    if string.sub(path, -1, -1) == "/" then parsed.is_directory = 1 end
++    return parsed
++end
++
++-----------------------------------------------------------------------------
++-- Builds a path component from its segments, escaping protected characters.
++-- Input
++--   parsed: path segments
++--   unsafe: if true, segments are not protected before path is built
++-- Returns
++--   path: corresponding path stringing
++-----------------------------------------------------------------------------
++function _M.build_path(parsed, unsafe)
++    local path = ""
++    local n = #parsed
++    if unsafe then
++        for i = 1, n-1 do
++            path = path .. parsed[i]
++            path = path .. "/"
++        end
++        if n > 0 then
++            path = path .. parsed[n]
++            if parsed.is_directory then path = path .. "/" end
++        end
++    else
++        for i = 1, n-1 do
++            path = path .. protect_segment(parsed[i])
++            path = path .. "/"
++        end
++        if n > 0 then
++            path = path .. protect_segment(parsed[n])
++            if parsed.is_directory then path = path .. "/" end
++        end
++    end
++    if parsed.is_absolute then path = "/" .. path end
++    return path
++end
++
++return _M
++
+diff --git a/lua-tree/share/lua/5.1/pl/compat.lua b/lua-tree/share/lua/5.1/pl/compat.lua
+index 1707ef6..b4e457d 100644
+--- a/lua-tree/share/lua/5.1/pl/compat.lua
++++ b/lua-tree/share/lua/5.1/pl/compat.lua
+@@ -26,7 +26,7 @@ end
+ 
+ --- the directory separator character for the current platform.
+ -- @field dir_separator
+-compat.dir_separator = _G.package.config:sub(1,1)
++--compat.dir_separator = _G.package.config:sub(1,1)
+ 
+ --- boolean flag this is a Windows platform.
+ -- @field is_windows

@@ -1002,7 +1002,7 @@ local function handle_missing_field(field, value, opts)
 
   -- If not `required`, it is nullable.
   if field.required ~= true then
-    return nil
+    return null
   end
 
   if field.abstract then
@@ -1100,10 +1100,8 @@ validate_fields = function(self, input)
       pok, err, errors[k] = pcall(self.validate_field, self, input, v)
       if not pok then
         errors[k] = validation_errors.SCHEMA_CANNOT_VALIDATE
-        kong.log.debug(errors[k], ": ", err)
       end
     elseif is_ttl then
-      kong.log.debug("ignoring validation on ttl field")
     else
       field, err = resolve_field(self, k, field, subschema)
       if field then

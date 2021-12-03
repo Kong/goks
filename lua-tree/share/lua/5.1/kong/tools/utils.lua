@@ -85,6 +85,7 @@ end
 
 
 local get_rand_bytes = require "go.rand".get_rand_bytes
+_M.get_rand_bytes = get_rand_bytes
 
 --- Generates a v4 uuid.
 -- @function uuid

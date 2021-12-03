@@ -1,5 +1,5 @@
 local typedefs = require "kong.db.schema.typedefs"
-local null = nil
+local null = ngx.null
 
 
 return {
