@@ -10,7 +10,7 @@ var setuplua = `
 local json = require "go.json"
 local Errors = require "kong.db.errors"
 local Entity = require "kong.db.schema.entity"
-local inspect = require"inspect"
+local inspect = require "inspect"
 local typedefs = require "kong.db.schema.typedefs"
 local MetaSchema = require "kong.db.schema.metaschema"
 
@@ -56,7 +56,6 @@ _G["process_auto_fields"] = function(plugin)
   if err then
     return nil, err
   end
-  local inspect = require "inspect"
   local p = Plugins:process_auto_fields(tbl, "insert")
   return json.encode(p)
 end
@@ -73,6 +72,114 @@ _G["load_plugin_schema"] = function(plugin_schema_string)
   if not ok then
     return nil, "error initializing schema for plugin: " .. err
   end
+end
+
+-- Remove functions from a schema definition so that
+-- cjson can encode the schema.
+-- Taken from kong/api/api_helpers.lua
+local schema_to_jsonable
+do
+  local insert = table.insert
+  local ipairs = ipairs
+  local next = next
+  local cjson = { array_mt = {} } --- TODO(hbagdi) XXX analyze the impact
+
+  local fdata_to_jsonable
+
+
+  local function fields_to_jsonable(fields)
+    local out = {}
+    for _, field in ipairs(fields) do
+      local fname = next(field)
+      local fdata = field[fname]
+      insert(out, { [fname] = fdata_to_jsonable(fdata, "no") })
+    end
+    setmetatable(out, cjson.array_mt)
+    return out
+  end
+
+
+  -- Convert field data from schemas into something that can be
+  -- passed to a JSON encoder.
+  -- @tparam table fdata A Lua table with field data
+  -- @tparam string is_array A three-state enum: "yes", "no" or "maybe"
+  -- @treturn table A JSON-convertible Lua table
+  fdata_to_jsonable = function(fdata, is_array)
+    local out = {}
+    local iter = is_array == "yes" and ipairs or pairs
+
+    for k, v in iter(fdata) do
+      if is_array == "maybe" and type(k) ~= "number" then
+        is_array = "no"
+      end
+
+      if k == "schema" then
+        out[k] = schema_to_jsonable(v)
+
+      elseif type(v) == "table" then
+        if k == "fields" and fdata.type == "record" then
+          out[k] = fields_to_jsonable(v)
+
+        elseif k == "default" and fdata.type == "array" then
+          out[k] = fdata_to_jsonable(v, "yes")
+
+        else
+          out[k] = fdata_to_jsonable(v, "maybe")
+        end
+
+      elseif type(v) == "number" then
+        if v ~= v then
+          out[k] = "nan"
+        elseif v == math.huge then
+          out[k] = "inf"
+        elseif v == -math.huge then
+          out[k] = "-inf"
+        else
+          out[k] = v
+        end
+
+      elseif type(v) ~= "function" then
+        out[k] = v
+      end
+    end
+    if is_array == "yes" or is_array == "maybe" then
+      setmetatable(out, cjson.array_mt)
+    end
+    return out
+  end
+
+
+  schema_to_jsonable = function(schema)
+    local fields = fields_to_jsonable(schema.fields)
+    return { fields = fields }
+  end
+	local schema_to_jsonable = schema_to_jsonable
+end
+
+-- Taken from kong/api/routes/kong.lua
+local strip_foreign_schemas = function(fields)
+  for _, field in ipairs(fields) do
+    local fname = next(field)
+    local fdata = field[fname]
+    if fdata["type"] == "foreign" then
+      fdata.schema = nil
+    end
+  end
+end
+
+_G["schema_as_json"] = function(schema_name)
+  local subschema = Plugins.subschemas and Plugins.subschemas[schema_name] or nil
+  if not subschema then
+    return nil, "no plugin named '" .. schema_name .. "'"
+  end
+  local config = subschema.fields and subschema.fields.config or nil
+  if not config then
+    return nil, "no plugin schema available for '" .. schema_name .. "'"
+  end
+
+  local copy = schema_to_jsonable(subschema)
+  strip_foreign_schemas(copy.fields)
+  return json.encode(copy), nil
 end
 `
 

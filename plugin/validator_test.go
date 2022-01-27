@@ -20,6 +20,10 @@ type KongPlugin struct {
 	Tags      []string               `json:"tags,omitempty" yaml:"tags,omitempty"`
 }
 
+type KongPluginConfig struct {
+	Fields []map[string]interface{} `json:"fields,omitempty" yaml:"fields,omitempty"`
+}
+
 func TestValidator_LoadSchema(t *testing.T) {
 	v, err := NewValidator()
 	assert.Nil(t, err)
@@ -172,6 +176,35 @@ func TestValidator_ProcessAutoFields(t *testing.T) {
 		assert.Nil(t, kongPlugin.Config["service"])
 		assert.Nil(t, kongPlugin.Config["route"])
 		assert.Nil(t, kongPlugin.Config["tags"])
+	})
+}
+
+func TestValidator_SchemaAsJSON(t *testing.T) {
+	schemaNames := []string{
+		"key-auth",
+		"rate-limiting",
+	}
+	v, err := NewValidator()
+	assert.Nil(t, err)
+	for _, schemaName := range schemaNames {
+		schema, err := ioutil.ReadFile("testdata/" + schemaName + ".lua")
+		assert.Nil(t, err)
+		assert.Nil(t, v.LoadSchema(string(schema)))
+	}
+
+	t.Run("returns a valid JSON schema for loaded plugin schema", func(t *testing.T) {
+		for _, schemaName := range schemaNames {
+			schema, err := v.SchemaAsJSON(schemaName)
+			assert.Nil(t, err)
+			var kongPluginConfig KongPluginConfig
+			assert.Nil(t, json.Unmarshal([]byte(schema), &kongPluginConfig))
+		}
+	})
+
+	t.Run("returns error when specifying unknown plugin", func(t *testing.T) {
+		schema, err := v.SchemaAsJSON("invalid-plugin")
+		assert.Error(t, err, "no plugin named 'invalid-plugin'")
+		assert.Empty(t, schema)
 	})
 }
 
