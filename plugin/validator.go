@@ -29,3 +29,7 @@ func (v *Validator) Validate(pluginInstance string) error {
 func (v *Validator) ProcessAutoFields(pluginInstance string) (string, error) {
 	return v.vm.CallByParams("process_auto_fields", pluginInstance)
 }
+
+func (v *Validator) SchemaAsJSON(schemaName string) (string, error) {
+	return v.vm.CallByParams("schema_as_json", schemaName)
+}
