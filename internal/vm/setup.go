@@ -72,6 +72,7 @@ _G["load_plugin_schema"] = function(plugin_schema_string)
   if not ok then
     return nil, "error initializing schema for plugin: " .. err
   end
+  return plugin_name, nil
 end
 
 -- Remove functions from a schema definition so that

@@ -23,7 +23,7 @@ func main() {
 	if err != nil {
 		log.Fatalln("failed to read schema file:", err)
 	}
-	err = validator.LoadSchema(string(schema))
+	_, err = validator.LoadSchema(string(schema))
 	if err != nil {
 		log.Fatalln("failed to load schema:", err)
 	}

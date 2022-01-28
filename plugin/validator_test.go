@@ -31,17 +31,22 @@ func TestValidator_LoadSchema(t *testing.T) {
 	t.Run("loads a good schema", func(t *testing.T) {
 		schema, err := ioutil.ReadFile("testdata/key-auth.lua")
 		assert.Nil(t, err)
-		assert.Nil(t, v.LoadSchema(string(schema)))
+		pluginName, err := v.LoadSchema(string(schema))
+		assert.EqualValues(t, "key-auth", pluginName)
+		assert.Nil(t, err)
 	})
 	t.Run("loads a schema with entity checks", func(t *testing.T) {
 		schema, err := ioutil.ReadFile("testdata/rate-limiting.lua")
 		assert.Nil(t, err)
-		assert.Nil(t, v.LoadSchema(string(schema)))
+		pluginName, err := v.LoadSchema(string(schema))
+		assert.EqualValues(t, "rate-limiting", pluginName)
+		assert.Nil(t, err)
 	})
 	t.Run("fails to load a bad schema", func(t *testing.T) {
 		schema, err := ioutil.ReadFile("testdata/bad_schema.lua")
 		assert.Nil(t, err)
-		err = v.LoadSchema(string(schema))
+		pluginName, err := v.LoadSchema(string(schema))
+		assert.Empty(t, pluginName)
 		assert.NotNil(t, err)
 		expected := "name: field required for entity check"
 		assert.True(t, strings.Contains(err.Error(), expected))
@@ -49,7 +54,8 @@ func TestValidator_LoadSchema(t *testing.T) {
 	t.Run("fails to load a schema with invalid imports", func(t *testing.T) {
 		schema, err := ioutil.ReadFile("testdata/invalid_import_schema.lua")
 		assert.Nil(t, err)
-		err = v.LoadSchema(string(schema))
+		pluginName, err := v.LoadSchema(string(schema))
+		assert.Empty(t, pluginName)
 		assert.NotNil(t, err)
 	})
 }
@@ -59,13 +65,19 @@ func TestValidator_Validate(t *testing.T) {
 	assert.Nil(t, err)
 	schema, err := ioutil.ReadFile("testdata/uuid_schema.lua")
 	assert.Nil(t, err)
-	assert.Nil(t, v.LoadSchema(string(schema)))
+	pluginName, err := v.LoadSchema(string(schema))
+	assert.EqualValues(t, "test", pluginName)
+	assert.Nil(t, err)
 	schema, err = ioutil.ReadFile("testdata/key-auth.lua")
 	assert.Nil(t, err)
-	assert.Nil(t, v.LoadSchema(string(schema)))
+	pluginName, err = v.LoadSchema(string(schema))
+	assert.EqualValues(t, "key-auth", pluginName)
+	assert.Nil(t, err)
 	schema, err = ioutil.ReadFile("testdata/rate-limiting.lua")
 	assert.Nil(t, err)
-	assert.Nil(t, v.LoadSchema(string(schema)))
+	pluginName, err = v.LoadSchema(string(schema))
+	assert.EqualValues(t, "rate-limiting", pluginName)
+	assert.Nil(t, err)
 	t.Run("validates a uuid correctly", func(t *testing.T) {
 		plugin := `{
                      "name": "test",
@@ -148,7 +160,9 @@ func TestValidator_ProcessAutoFields(t *testing.T) {
 	assert.Nil(t, err)
 	schema, err := ioutil.ReadFile("testdata/key-auth.lua")
 	assert.Nil(t, err)
-	assert.Nil(t, v.LoadSchema(string(schema)))
+	pluginName, err := v.LoadSchema(string(schema))
+	assert.EqualValues(t, "key-auth", pluginName)
+	assert.Nil(t, err)
 	t.Run("populates defaults for key-auth plugin", func(t *testing.T) {
 		plugin := `{
                      "name": "key-auth",
@@ -192,7 +206,9 @@ func TestValidator_SchemaAsJSON(t *testing.T) {
 	for _, schemaName := range schemaNames {
 		schema, err := ioutil.ReadFile("testdata/" + schemaName + ".lua")
 		assert.Nil(t, err)
-		assert.Nil(t, v.LoadSchema(string(schema)))
+		pluginName, err := v.LoadSchema(string(schema))
+		assert.EqualValues(t, schemaName, pluginName)
+		assert.Nil(t, err)
 	}
 
 	t.Run("returns a valid JSON schema for loaded plugin schema", func(t *testing.T) {
