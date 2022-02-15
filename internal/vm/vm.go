@@ -21,12 +21,15 @@ type VM struct {
 	mu sync.Mutex
 }
 
-func New() (*VM, error) {
-	LuaLDir := "lua-tree/share/lua/5.1"
+const LuaLDir = "lua-tree/share/lua/5.1"
+
+func init() {
 	lua.LuaPathDefault = "/?.lua;" +
 		LuaLDir + "/?.lua;" +
 		LuaLDir + "/?/init.lua"
+}
 
+func New() (*VM, error) {
 	l := lua.NewState(lua.Options{FS: &fs.FS{EmbedFS: goks.LuaTree}})
 	l.PreloadModule("go.json", json.Loader)
 	l.PreloadModule("go.rand", rand.Loader)
