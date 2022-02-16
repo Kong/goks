@@ -1,6 +1,8 @@
 package plugin
 
 import (
+	"embed"
+
 	"github.com/kong/goks/internal/vm"
 )
 
@@ -8,8 +10,12 @@ type Validator struct {
 	vm *vm.VM
 }
 
-func NewValidator() (*Validator, error) {
-	vm, err := vm.New()
+type ValidatorOpts struct {
+	InjectFS *embed.FS
+}
+
+func NewValidator(opts ValidatorOpts) (*Validator, error) {
+	vm, err := vm.New(vm.Opts{InjectFS: opts.InjectFS})
 	if err != nil {
 		return nil, err
 	}
