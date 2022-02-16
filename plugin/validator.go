@@ -10,8 +10,12 @@ type Validator struct {
 	vm *vm.VM
 }
 
-func NewValidator(injectFS *embed.FS) (*Validator, error) {
-	vm, err := vm.New(injectFS)
+type ValidatorOpts struct {
+	InjectFS *embed.FS
+}
+
+func NewValidator(opts ValidatorOpts) (*Validator, error) {
+	vm, err := vm.New(vm.Opts{InjectFS: opts.InjectFS})
 	if err != nil {
 		return nil, err
 	}

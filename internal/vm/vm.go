@@ -22,6 +22,11 @@ type VM struct {
 	mu sync.Mutex
 }
 
+type Opts struct {
+	// Inject and/or override core Lua file system
+	InjectFS *embed.FS
+}
+
 const LuaLDir = "lua-tree/share/lua/5.1"
 
 func init() {
@@ -30,9 +35,9 @@ func init() {
 		LuaLDir + "/?/init.lua"
 }
 
-func New(injectFS *embed.FS) (*VM, error) {
-	if injectFS != nil {
-		if _, err := injectFS.ReadDir(LuaLDir); err != nil {
+func New(opts Opts) (*VM, error) {
+	if opts.InjectFS != nil {
+		if _, err := opts.InjectFS.ReadDir(LuaLDir); err != nil {
 			return nil, fmt.Errorf("%w: file system must contain '%s'", err, LuaLDir)
 		}
 	}
@@ -40,7 +45,7 @@ func New(injectFS *embed.FS) (*VM, error) {
 	l := lua.NewState(lua.Options{
 		FS: &fs.FS{
 			Core:           goks.LuaTree,
-			InjectOverride: injectFS,
+			InjectOverride: opts.InjectFS,
 		},
 	})
 	l.PreloadModule("go.json", json.Loader)

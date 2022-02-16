@@ -27,7 +27,7 @@ type KongPluginSchema struct {
 }
 
 func TestValidator_LoadSchema(t *testing.T) {
-	v, err := NewValidator(nil)
+	v, err := NewValidator(ValidatorOpts{})
 	assert.Nil(t, err)
 
 	t.Run("loads a good schema", func(t *testing.T) {
@@ -61,7 +61,7 @@ func TestValidator_LoadSchema(t *testing.T) {
 		assert.NotNil(t, err)
 	})
 
-	vInjected, err := NewValidator(&pluginTesting.LuaTree)
+	vInjected, err := NewValidator(ValidatorOpts{InjectFS: &pluginTesting.LuaTree})
 	assert.Nil(t, err)
 	schema, err := ioutil.ReadFile("testdata/inject_filesystem_schema.lua")
 	assert.Nil(t, err)
@@ -78,7 +78,7 @@ func TestValidator_LoadSchema(t *testing.T) {
 }
 
 func TestValidator_Validate(t *testing.T) {
-	v, err := NewValidator(nil)
+	v, err := NewValidator(ValidatorOpts{})
 	assert.Nil(t, err)
 	schema, err := ioutil.ReadFile("testdata/uuid_schema.lua")
 	assert.Nil(t, err)
@@ -171,7 +171,7 @@ func TestValidator_Validate(t *testing.T) {
 		assert.JSONEq(t, expected, err.Error())
 	})
 
-	v, err = NewValidator(&pluginTesting.LuaTree)
+	v, err = NewValidator(ValidatorOpts{InjectFS: &pluginTesting.LuaTree})
 	assert.Nil(t, err)
 	schema, err = ioutil.ReadFile("testdata/inject_filesystem_schema.lua")
 	assert.Nil(t, err)
@@ -232,7 +232,7 @@ func TestValidator_Validate(t *testing.T) {
 }
 
 func TestValidator_ProcessAutoFields(t *testing.T) {
-	v, err := NewValidator(nil)
+	v, err := NewValidator(ValidatorOpts{})
 	assert.Nil(t, err)
 	schema, err := ioutil.ReadFile("testdata/key-auth.lua")
 	assert.Nil(t, err)
@@ -277,7 +277,7 @@ func TestValidator_SchemaAsJSON(t *testing.T) {
 		"rate-limiting",
 		"udp-log",
 	}
-	v, err := NewValidator(nil)
+	v, err := NewValidator(ValidatorOpts{})
 	assert.Nil(t, err)
 	for _, schemaName := range schemaNames {
 		schema, err := ioutil.ReadFile("testdata/" + schemaName + ".lua")

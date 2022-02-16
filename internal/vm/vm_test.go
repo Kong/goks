@@ -15,20 +15,20 @@ var invalidLuaTree embed.FS
 
 func TestNew(t *testing.T) {
 	t.Run("instantiate standard VM", func(t *testing.T) {
-		vm, err := New(nil)
+		vm, err := New(Opts{})
 		assert.NotNil(t, vm)
 		assert.Nil(t, err)
 	})
 
 	t.Run("invalid VM instantiation with injected overrides", func(t *testing.T) {
-		vm, err := New(&invalidLuaTree)
+		vm, err := New(Opts{InjectFS: &invalidLuaTree})
 		assert.Nil(t, vm)
 		assert.NotNil(t, err)
 		assert.Contains(t, err.Error(), "file system must contain 'lua-tree/share/lua/5.1'")
 	})
 
 	t.Run("VM instantiation with injected overrides", func(t *testing.T) {
-		vm, err := New(&goks.LuaTree)
+		vm, err := New(Opts{InjectFS: &goks.LuaTree})
 		assert.NotNil(t, vm)
 		assert.Nil(t, err)
 	})
@@ -36,7 +36,7 @@ func TestNew(t *testing.T) {
 
 func BenchmarkNew(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		New(nil)
+		New(Opts{})
 	}
 }
 
@@ -50,7 +50,7 @@ end
 `
 
 func TestVM_CallByParams(t *testing.T) {
-	vm, err := New(nil)
+	vm, err := New(Opts{})
 	assert.NotNil(t, vm)
 	assert.Nil(t, err)
 	buf := bytes.NewBufferString(testlua)

@@ -13,7 +13,11 @@ type FS struct {
 
 func (f *FS) Open(path string) (io.ReadCloser, error) {
 	if f.InjectOverride != nil {
-		if file, err := f.InjectOverride.Open(path); err == nil {
+		file, err := f.InjectOverride.Open(path)
+		if err != nil && !os.IsNotExist(err) {
+			return nil, err
+		}
+		if err == nil {
 			return file, nil
 		}
 	}
@@ -23,7 +27,11 @@ func (f *FS) Open(path string) (io.ReadCloser, error) {
 
 func (f *FS) Stat(path string) (os.FileInfo, error) {
 	if f.InjectOverride != nil {
-		if file, err := f.InjectOverride.Open(path); err == nil {
+		file, err := f.InjectOverride.Open(path)
+		if err != nil && !os.IsNotExist(err) {
+			return nil, err
+		}
+		if err == nil {
 			return file.Stat()
 		}
 	}
