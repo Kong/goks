@@ -7,7 +7,9 @@ import (
 	"testing"
 	"time"
 
+	pluginTesting "github.com/kong/goks/plugin/testdata"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type KongPlugin struct {
@@ -25,7 +27,7 @@ type KongPluginSchema struct {
 }
 
 func TestValidator_LoadSchema(t *testing.T) {
-	v, err := NewValidator()
+	v, err := NewValidator(nil)
 	assert.Nil(t, err)
 
 	t.Run("loads a good schema", func(t *testing.T) {
@@ -58,10 +60,25 @@ func TestValidator_LoadSchema(t *testing.T) {
 		assert.Empty(t, pluginName)
 		assert.NotNil(t, err)
 	})
+
+	vInjected, err := NewValidator(&pluginTesting.LuaTree)
+	assert.Nil(t, err)
+	schema, err := ioutil.ReadFile("testdata/inject_filesystem_schema.lua")
+	assert.Nil(t, err)
+	t.Run("fails to load schema without injected file system - invalid imports", func(t *testing.T) {
+		pluginName, err := v.LoadSchema(string(schema))
+		assert.Empty(t, pluginName)
+		assert.NotNil(t, err)
+	})
+	t.Run("load schema with injected file system that previously had invalid imports", func(t *testing.T) {
+		pluginName, err := vInjected.LoadSchema(string(schema))
+		assert.EqualValues(t, "inject-test", pluginName)
+		assert.Nil(t, err)
+	})
 }
 
 func TestValidator_Validate(t *testing.T) {
-	v, err := NewValidator()
+	v, err := NewValidator(nil)
 	assert.Nil(t, err)
 	schema, err := ioutil.ReadFile("testdata/uuid_schema.lua")
 	assert.Nil(t, err)
@@ -153,10 +170,69 @@ func TestValidator_Validate(t *testing.T) {
 `
 		assert.JSONEq(t, expected, err.Error())
 	})
+
+	v, err = NewValidator(&pluginTesting.LuaTree)
+	assert.Nil(t, err)
+	schema, err = ioutil.ReadFile("testdata/inject_filesystem_schema.lua")
+	assert.Nil(t, err)
+	pluginName, err = v.LoadSchema(string(schema))
+	assert.EqualValues(t, "inject-test", pluginName)
+	assert.Nil(t, err)
+	t.Run("validates a plugin with injected import fields correctly", func(t *testing.T) {
+		plugin := `{
+                     "name": "inject-test",
+                     "config": {
+                       "shared": "bar"
+                     },
+                     "enabled": true,
+                     "protocols": [ "http" ]
+                   }`
+		err := v.Validate(plugin)
+		assert.NotNil(t, err)
+		configErr := getErrForField(err, "config.shared")
+		assert.Equal(t, "expected a record", configErr)
+
+		plugin = `{
+			"name": "inject-test",
+			"config": {
+				"shared": {
+					"host": "bar"
+				}
+			},
+			"enabled": true,
+			"protocols": [ "http" ]
+		}`
+		err = v.Validate(plugin)
+		assert.NotNil(t, err)
+		expected := `{
+			"config": {
+				"shared": {
+					"@entity": [
+						"all or none of these fields must be set: 'host', 'port'"
+					]
+				}
+			}
+		}`
+		require.JSONEq(t, expected, err.Error())
+
+		plugin = `{
+			"name": "inject-test",
+			"config": {
+				"shared": {
+					"host": "bar",
+					"port": 80
+				}
+			},
+			"enabled": true,
+			"protocols": [ "http" ]
+		}`
+		err = v.Validate(plugin)
+		assert.Nil(t, err)
+	})
 }
 
 func TestValidator_ProcessAutoFields(t *testing.T) {
-	v, err := NewValidator()
+	v, err := NewValidator(nil)
 	assert.Nil(t, err)
 	schema, err := ioutil.ReadFile("testdata/key-auth.lua")
 	assert.Nil(t, err)
@@ -201,7 +277,7 @@ func TestValidator_SchemaAsJSON(t *testing.T) {
 		"rate-limiting",
 		"udp-log",
 	}
-	v, err := NewValidator()
+	v, err := NewValidator(nil)
 	assert.Nil(t, err)
 	for _, schemaName := range schemaNames {
 		schema, err := ioutil.ReadFile("testdata/" + schemaName + ".lua")

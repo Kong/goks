@@ -15,7 +15,7 @@ var (
 
 func main() {
 	flag.Parse()
-	validator, err := plugin.NewValidator()
+	validator, err := plugin.NewValidator(nil)
 	if err != nil {
 		log.Fatalln("failed to create a VM:", err)
 	}

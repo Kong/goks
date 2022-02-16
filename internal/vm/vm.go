@@ -1,6 +1,7 @@
 package vm
 
 import (
+	"embed"
 	"fmt"
 	"io"
 	"sync"
@@ -29,8 +30,19 @@ func init() {
 		LuaLDir + "/?/init.lua"
 }
 
-func New() (*VM, error) {
-	l := lua.NewState(lua.Options{FS: &fs.FS{EmbedFS: goks.LuaTree}})
+func New(injectFS *embed.FS) (*VM, error) {
+	if injectFS != nil {
+		if _, err := injectFS.ReadDir(LuaLDir); err != nil {
+			return nil, fmt.Errorf("%w: file system must contain '%s'", err, LuaLDir)
+		}
+	}
+
+	l := lua.NewState(lua.Options{
+		FS: &fs.FS{
+			Core:           goks.LuaTree,
+			InjectOverride: injectFS,
+		},
+	})
 	l.PreloadModule("go.json", json.Loader)
 	l.PreloadModule("go.rand", rand.Loader)
 	l.PreloadModule("go.uuid", uuid.Loader)
