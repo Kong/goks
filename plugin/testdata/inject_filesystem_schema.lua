@@ -12,6 +12,7 @@ return {
         fields = {
           { shared = shared.config_schema},
         },
-     },
+      },
     },
-},}
+  },
+}
