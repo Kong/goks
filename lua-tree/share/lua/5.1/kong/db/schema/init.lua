@@ -1223,7 +1223,7 @@ local function run_entity_check(self, name, input, arg, full_check, errors)
 
   else
     local error_fmt = validation_errors[name:upper()]
-    err = error_fmt and error_fmt:format(err) or err
+    local err = error_fmt and error_fmt:format(err) or err
     if not err then
       local data = pretty.write({ name = arg }):gsub("%s+", " ")
       err = validation_errors.ENTITY_CHECK:format(name, data)

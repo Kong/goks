@@ -231,6 +231,33 @@ func TestValidator_Validate(t *testing.T) {
 	})
 }
 
+func TestValidator_ValidateWithCustomEntityCheck(t *testing.T) {
+	v, err := NewValidator(ValidatorOpts{})
+	assert.Nil(t, err)
+	schema, err := ioutil.ReadFile("testdata/custom-entity-check.lua")
+	assert.Nil(t, err)
+	pluginName, err := v.LoadSchema(string(schema))
+	assert.Nil(t, err)
+	assert.EqualValues(t, "custom-entity-check", pluginName)
+
+	t.Run("fails and returns error message", func(t *testing.T) {
+		plugin := `{
+			"name": "custom-entity-check",
+			"config": {"strategy": "other"},
+			"enabled": true,
+			"protocols": ["http"]
+		}`
+		err := v.Validate(plugin)
+		assert.NotNil(t, err)
+		expected := `{
+			"@entity": [
+				"custom-entity-check failed message"
+			]
+		}`
+		require.JSONEq(t, expected, err.Error())
+	})
+}
+
 func TestValidator_ProcessAutoFields(t *testing.T) {
 	v, err := NewValidator(ValidatorOpts{})
 	assert.Nil(t, err)
