@@ -40,8 +40,7 @@ _G["validate"] = function(plugin)
   if err then
     return nil, err
   end
-  local inspect = require "inspect"
-  local ok ,err = Plugins:validate(tbl)
+  local ok, err = Plugins:validate(tbl)
   if not ok then
     return nil, json.encode(err)
   end
