@@ -44,6 +44,7 @@ schema/init.lua:
 - Use go.uuid instead of uuid
 - use re_match as UUID match intad of re_find
 - remove log statements
+- ensure custom_entity_checks in schemas return error message
 
 
 schema/typedefs.lua:
@@ -234,6 +235,15 @@ index 734fbd5..0ddffad 100644
      else
        field, err = resolve_field(self, k, field, subschema)
        if field then
+@@ -1223,7 +1223,7 @@ local function run_entity_check(self, name, input, arg, full_check, errors)
+ 
+   else
+     local error_fmt = validation_errors[name:upper()]
+-    err = error_fmt and error_fmt:format(err) or err
++    local err = error_fmt and error_fmt:format(err) or err
+     if not err then
+       local data = pretty.write({ name = arg }):gsub("%s+", " ")
+       err = validation_errors.ENTITY_CHECK:format(name, data)
 @@ -2063,6 +2061,39 @@ local function allow_record_fields_by_name(record, loop)
  end
  
