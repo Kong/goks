@@ -109,18 +109,18 @@ end
 
 local function validate_tag(tag)
 
-  local ok, err = validate_utf8_string(tag)
-  if not ok then
-    return nil, err
-  end
+  -- local ok, err = validate_utf8_string(tag)
+  -- if not ok then
+  --   return nil, err
+  -- end
 
-  -- printable ASCII (33-126 except ','(44) and '/'(47),
-  -- plus non-ASCII utf8 (128-244)
-  if not match(tag, "^[\033-\043\045\046\048-\126\128-\244]+$") then
-    return nil,
-    "invalid tag '" .. tag ..
-      "': expected printable ascii (except `,` and `/`) or valid utf-8 sequences"
-  end
+  -- -- printable ASCII (33-126 except ','(44) and '/'(47),
+  -- -- plus non-ASCII utf8 (128-244)
+  -- if not match(tag, "^[\033-\043\045\046\048-\126\128-\244]+$") then
+  --   return nil,
+  --   "invalid tag '" .. tag ..
+  --     "': expected printable ascii (except `,` and `/`) or valid utf-8 sequences"
+  -- end
 
   return true
 end
