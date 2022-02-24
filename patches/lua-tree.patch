@@ -49,7 +49,7 @@ schema/init.lua:
 schema/typedefs.lua:
 - use patched.url instead of socket.url
 - disable openssl
-- disable tag validation
+- use go.re2::match instead of string.match
 
 
 tools/utils.lua:
@@ -373,7 +373,7 @@ diff --git a/lua-tree/share/lua/5.1/kong/db/schema/typedefs.lua b/lua-tree/share
 index c1a150a..3d6c639 100644
 --- a/lua-tree/share/lua/5.1/kong/db/schema/typedefs.lua
 +++ b/lua-tree/share/lua/5.1/kong/db/schema/typedefs.lua
-@@ -1,10 +1,8 @@
+@@ -1,15 +1,13 @@
  --- A library of ready-to-use type synonyms to use in schema definitions.
  -- @module kong.db.schema.typedefs
  local utils = require "kong.tools.utils"
@@ -385,37 +385,12 @@ index c1a150a..3d6c639 100644
  local constants = require "kong.constants"
  
  
-@@ -109,18 +109,18 @@ end
-
- local function validate_tag(tag)
-
--  local ok, err = validate_utf8_string(tag)
--  if not ok then
--    return nil, err
--  end
--
--  -- printable ASCII (33-126 except ','(44) and '/'(47),
--  -- plus non-ASCII utf8 (128-244)
--  if not match(tag, "^[\033-\043\045\046\048-\126\128-\244]+$") then
--    return nil,
--    "invalid tag '" .. tag ..
--      "': expected printable ascii (except `,` and `/`) or valid utf-8 sequences"
--  end
-+  -- local ok, err = validate_utf8_string(tag)
-+  -- if not ok then
-+  --   return nil, err
-+  -- end
-+
-+  -- -- printable ASCII (33-126 except ','(44) and '/'(47),
-+  -- -- plus non-ASCII utf8 (128-244)
-+  -- if not match(tag, "^[\033-\043\045\046\048-\126\128-\244]+$") then
-+  --   return nil,
-+  --   "invalid tag '" .. tag ..
-+  --     "': expected printable ascii (except `,` and `/`) or valid utf-8 sequences"
-+  -- end
-
-   return true
- end
+local pairs = pairs
+-local match = string.match
++local match = require "go.re2".match
+local gsub = string.gsub
+local null = ngx.null
+local type = type
 @@ -216,22 +214,12 @@ end
  
  
