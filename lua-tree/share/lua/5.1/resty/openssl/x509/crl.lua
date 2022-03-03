@@ -11,18 +11,23 @@ local digest_lib = require("resty.openssl.digest")
 local extension_lib = require("resty.openssl.x509.extension")
 local pkey_lib = require("resty.openssl.pkey")
 local util = require "resty.openssl.util"
+local ctx_lib = require "resty.openssl.ctx"
 local txtnid2nid = require("resty.openssl.objects").txtnid2nid
 local format_error = require("resty.openssl.err").format_error
-
-local OPENSSL_10 = require("resty.openssl.version").OPENSSL_10
-local OPENSSL_11_OR_LATER = require("resty.openssl.version").OPENSSL_11_OR_LATER
+local version = require("resty.openssl.version")
+local OPENSSL_10 = version.OPENSSL_10
+local OPENSSL_11_OR_LATER = version.OPENSSL_11_OR_LATER
+local OPENSSL_30 = version.OPENSSL_30
+local BORINGSSL = version.BORINGSSL
+local BORINGSSL_110 = version.BORINGSSL_110 -- used in boringssl-fips-20190808
 
 local accessors = {}
 
 accessors.set_issuer_name = C.X509_CRL_set_issuer_name
 accessors.set_version = C.X509_CRL_set_version
 
-if OPENSSL_11_OR_LATER then
+
+if OPENSSL_11_OR_LATER and not BORINGSSL_110 then
   accessors.get_last_update = C.X509_CRL_get0_lastUpdate
   accessors.set_last_update = C.X509_CRL_set1_lastUpdate
   accessors.get_next_update = C.X509_CRL_get0_nextUpdate
@@ -30,7 +35,8 @@ if OPENSSL_11_OR_LATER then
   accessors.get_version = C.X509_CRL_get_version
   accessors.get_issuer_name = C.X509_CRL_get_issuer -- returns internal ptr
   accessors.get_signature_nid = C.X509_CRL_get_signature_nid
-elseif OPENSSL_10 then
+  -- BORINGSSL_110 exports X509_CRL_get_signature_nid, but just ignored for simplicity
+elseif OPENSSL_10 or BORINGSSL_110 then
   accessors.get_last_update = function(crl)
     if crl == nil or crl.crl == nil then
       return nil
@@ -80,10 +86,14 @@ local mt = { __index = _M, __tostring = tostring }
 
 local x509_crl_ptr_ct = ffi.typeof("X509_CRL*")
 
-function _M.new(crl, fmt)
+function _M.new(crl, fmt, properties)
   local ctx
   if not crl then
-    ctx = C.X509_CRL_new()
+    if OPENSSL_30 then
+      ctx = C.X509_CRL_new_ex(ctx_lib.get_libctx(), properties)
+    else
+      ctx = C.X509_CRL_new()
+    end
     if ctx == nil then
       return nil, "x509.crl.new: X509_CRL_new() failed"
     end
@@ -191,16 +201,20 @@ function _M:sign(pkey, digest)
     return false, "x509.crl:sign: expect a pkey instance at #1"
   end
 
+  local digest_algo
   if digest then
     if not digest_lib.istype(digest) then
       return false, "x509.crl:sign: expect a digest instance at #2"
-    elseif not digest.dtyp then
-      return false, "x509.crl:sign: expect a digest instance to have dtyp member"
+    elseif not digest.algo then
+      return false, "x509.crl:sign: expect a digest instance to have algo member"
     end
+    digest_algo = digest.algo
+  elseif BORINGSSL then
+    digest_algo = C.EVP_get_digestbyname('sha256')
   end
 
   -- returns size of signature if success
-  if C.X509_CRL_sign(self.ctx, pkey.ctx, digest and digest.dtyp) == 0 then
+  if C.X509_CRL_sign(self.ctx, pkey.ctx, digest_algo) == 0 then
     return false, format_error("x509.crl:sign")
   end
 

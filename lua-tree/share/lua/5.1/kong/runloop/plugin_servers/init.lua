@@ -9,6 +9,7 @@ local ngx_var = ngx.var
 local coroutine_running = coroutine.running
 local get_plugin_info = proc_mgmt.get_plugin_info
 local ngx_timer_at = ngx.timer.at
+local subsystem = ngx.config.subsystem
 
 --- keep request data a bit longer, into the log timer
 local save_for_later = {}
@@ -55,6 +56,25 @@ local exposed_api = {
     local saved = save_for_later[coroutine_running()]
     local ctx_shared = saved and saved.ctx_shared or kong.ctx.shared
     ctx_shared[k] = v
+  end,
+
+  ["kong.request.get_headers"] = function(max)
+    local saved = save_for_later[coroutine_running()]
+    return saved and saved.request_headers or kong.request.get_headers(max)
+  end,
+
+  ["kong.request.get_header"] = function(name)
+    local saved = save_for_later[coroutine_running()]
+    if not saved then
+      return kong.request.get_header(name)
+    end
+
+    local header_value = saved.request_headers[name]
+    if type(header_value) == "table" then
+      header_value = header_value[1]
+    end
+
+    return header_value
   end,
 
   ["kong.response.get_status"] = function()
@@ -225,7 +245,8 @@ local function build_phases(plugin)
           serialize_data = kong.log.serialize(),
           ngx_ctx = ngx.ctx,
           ctx_shared = kong.ctx.shared,
-          response_headers = ngx.resp.get_headers(100),
+          request_headers = subsystem == "http" and ngx.req.get_headers(100) or nil,
+          response_headers = subsystem == "http" and ngx.resp.get_headers(100) or nil,
           response_status = ngx.status,
         }
 

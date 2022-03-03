@@ -3,16 +3,52 @@ local C = ffi.C
 local ffi_cast = ffi.cast
 local ffi_str = ffi.string
 
-require "resty.openssl.include.crypto"
-require "resty.openssl.include.evp"
-require "resty.openssl.include.objects"
-local OPENSSL_30 = require("resty.openssl.version").OPENSSL_30
 local format_error = require("resty.openssl.err").format_error
+
+local OPENSSL_30, BORINGSSL
+
+local function try_require_modules()
+  package.loaded["resty.openssl.version"] = nil
+
+  local pok, lib = pcall(require, "resty.openssl.version")
+  if pok then
+    OPENSSL_30 = lib.OPENSSL_30
+    BORINGSSL = lib.BORINGSSL
+
+    require "resty.openssl.include.crypto"
+    require "resty.openssl.include.objects"
+  else
+    package.loaded["resty.openssl.version"] = nil
+  end
+end
+try_require_modules()
 
 
 local _M = {
-  _VERSION = '0.7.4',
+  _VERSION = '0.8.5',
 }
+
+local libcrypto_name
+local lib_patterns = {
+  "%s", "%s.so.3", "%s.so.1.1", "%s.so.1.0"
+}
+
+function _M.load_library()
+  for _, pattern in ipairs(lib_patterns) do
+    -- true: load to global namespae
+    local pok, _ = pcall(ffi.load, string.format(pattern, "crypto"), true)
+    if pok then
+      libcrypto_name = string.format(pattern, "crypto")
+      ffi.load(string.format(pattern, "ssl"), true)
+
+      try_require_modules()
+
+      return libcrypto_name
+    end
+  end
+
+  return false, "unable to load crypto library"
+end
 
 function _M.load_modules()
   _M.bn = require("resty.openssl.bn")
@@ -40,6 +76,8 @@ function _M.load_modules()
 
   if OPENSSL_30 then
     _M.provider = require("resty.openssl.provider")
+    _M.mac = require("resty.openssl.mac")
+    _M.ctx = require("resty.openssl.ctx")
   end
 
   _M.bignum = _M.bn
@@ -196,53 +234,182 @@ function _M.luaossl_compat()
   end
 end
 
-function _M.set_fips_mode(enable)
-  if not not enable == _M.get_fips_mode() then
+if OPENSSL_30 then
+  require "resty.openssl.include.evp"
+  local provider = require "resty.openssl.provider"
+  local ctx_lib = require "resty.openssl.ctx"
+  local fips_provider_ctx
+
+  function _M.set_fips_mode(enable, self_test)
+    if not not enable == _M.get_fips_mode() then
+      return true
+    end
+
+    if enable then
+      local p, err = provider.load("fips")
+      if not p then
+        return false, err
+      end
+      fips_provider_ctx = p
+      if self_test then
+        local ok, err = p:self_test()
+        if not ok then
+          return false, err
+        end
+      end
+
+    elseif fips_provider_ctx then -- disable
+      local p = fips_provider_ctx
+      fips_provider_ctx = nil
+      return p:unload()
+    end
+
+    -- set algorithm in fips mode in default ctx
+    -- this deny/allow non-FIPS compliant algorithms to be used from EVP interface
+    -- and redirect/remove redirect implementation to fips provider
+    if C.EVP_default_properties_enable_fips(ctx_lib.get_libctx(), enable and 1 or 0) == 0 then
+      return false, format_error("openssl.set_fips_mode: EVP_default_properties_enable_fips")
+    end
+
     return true
   end
 
-  if C.FIPS_mode_set(enable and 1 or 0) == 0 then
-    return false, format_error("openssl.set_fips_mode")
+  function _M.get_fips_mode()
+    local pok = provider.is_available("fips")
+    if not pok then
+      return false
+    end
+
+    return C.EVP_default_properties_is_fips_enabled(ctx_lib.get_libctx()) == 1
+  end
+
+else
+  function _M.set_fips_mode(enable)
+    if not not enable == _M.get_fips_mode() then
+      return true
+    end
+
+    if C.FIPS_mode_set(enable and 1 or 0) == 0 then
+      return false, format_error("openssl.set_fips_mode")
+    end
+
+    return true
+  end
+
+  function _M.get_fips_mode()
+    return C.FIPS_mode() == 1
+  end
+end
+
+function _M.set_default_properties(props)
+  if not OPENSSL_30 then
+    return nil, "openssl.set_default_properties is only not supported from OpenSSL 3.0"
+  end
+
+  local ctx_lib = require "resty.openssl.ctx"
+
+  if C.EVP_set_default_properties(ctx_lib.get_libctx(), props) == 0 then
+    return false, format_error("openssl.EVP_set_default_properties")
   end
 
   return true
 end
 
-function _M.get_fips_mode()
-  return C.FIPS_mode() == 1
+local function list_legacy(typ, get_nid_cf)
+  local typ_lower = string.lower(typ:sub(5)) -- cut off EVP_
+  require ("resty.openssl.include.evp." .. typ_lower)
+
+  local ret = {}
+  local fn = ffi_cast("fake_openssl_" .. typ_lower .. "_list_fn*",
+              function(elem, from, to, arg)
+                if elem ~= nil then
+                  local nid = get_nid_cf(elem)
+                  table.insert(ret, ffi_str(C.OBJ_nid2sn(nid)))
+                end
+                -- from/to (renamings) are ignored
+              end)
+  C[typ .. "_do_all_sorted"](fn, nil)
+  fn:free()
+
+  return ret
 end
 
-local function get_list_func(cf, l)
-  return function(elem, from, to, arg)
-    if elem ~= nil then
-      local nid = cf(elem)
-      table.insert(l, ffi_str(C.OBJ_nid2sn(nid)))
-    end
-  end
+local function list_provided(typ)
+  local typ_lower = string.lower(typ:sub(5)) -- cut off EVP_
+  local typ_ptr = typ .. "*"
+  require ("resty.openssl.include.evp." .. typ_lower)
+  local ctx_lib = require "resty.openssl.ctx"
+
+  local ret = {}
+
+  local fn = ffi_cast("fake_openssl_" .. typ_lower .. "_provided_list_fn*",
+              function(elem, _)
+                elem = ffi_cast(typ_ptr, elem)
+                local name = ffi_str(C[typ .. "_get0_name"](elem))
+                -- alternate names are ignored, retrieve use TYPE_names_do_all
+                local prov = ffi_str(C.OSSL_PROVIDER_get0_name(C[typ .. "_get0_provider"](elem)))
+                table.insert(ret, name .. " @ " .. prov)
+              end)
+
+  C[typ .. "_do_all_provided"](ctx_lib.get_libctx(), fn, nil)
+  fn:free()
+
+  table.sort(ret)
+  return ret
 end
 
 function _M.list_cipher_algorithms()
-  local ret = {}
-  local fn = ffi_cast("fake_openssl_cipher_list_fn*",
-                      get_list_func(C.EVP_CIPHER_nid, ret))
+  if BORINGSSL then
+    return nil, "openssl.list_cipher_algorithms is not supported on BoringSSL"
+  end
 
-  C.EVP_CIPHER_do_all_sorted(fn, nil)
+  require "resty.openssl.include.evp.cipher"
+  local ret = list_legacy("EVP_CIPHER",
+              OPENSSL_30 and C.EVP_CIPHER_get_nid or C.EVP_CIPHER_nid)
 
-  fn:free()
+  if OPENSSL_30 then
+    local ret_provided = list_provided("EVP_CIPHER")
+    for _, r in ipairs(ret_provided) do
+      table.insert(ret, r)
+    end
+  end
 
   return ret
 end
 
 function _M.list_digest_algorithms()
-  local ret = {}
-  local fn = ffi_cast("fake_openssl_md_list_fn*",
-                      get_list_func(C.EVP_MD_type, ret))
+  if BORINGSSL then
+    return nil, "openssl.list_digest_algorithms is not supported on BoringSSL"
+  end
 
-  C.EVP_MD_do_all_sorted(fn, nil)
+  require "resty.openssl.include.evp.md"
+  local ret = list_legacy("EVP_MD",
+              OPENSSL_30 and C.EVP_MD_get_type or C.EVP_MD_type)
 
-  fn:free()
+  if OPENSSL_30 then
+    local ret_provided = list_provided("EVP_MD")
+    for _, r in ipairs(ret_provided) do
+      table.insert(ret, r)
+    end
+  end
 
   return ret
+end
+
+function _M.list_mac_algorithms()
+  if not OPENSSL_30 then
+    return nil, "openssl.list_mac_algorithms is only supported from OpenSSL 3.0"
+  end
+
+  return list_provided("EVP_MAC")
+end
+
+function _M.list_kdf_algorithms()
+  if not OPENSSL_30 then
+    return nil, "openssl.list_kdf_algorithms is only supported from OpenSSL 3.0"
+  end
+
+  return list_provided("EVP_KDF")
 end
 
 return _M

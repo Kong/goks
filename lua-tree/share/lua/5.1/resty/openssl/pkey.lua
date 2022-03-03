@@ -5,14 +5,15 @@ local ffi_new = ffi.new
 local ffi_str = ffi.string
 local ffi_cast = ffi.cast
 local ffi_copy = ffi.copy
-local null = ngx.null
 
 local rsa_macro = require "resty.openssl.include.rsa"
 local dh_macro = require "resty.openssl.include.dh"
 require "resty.openssl.include.bio"
 require "resty.openssl.include.pem"
 require "resty.openssl.include.x509"
+require "resty.openssl.include.evp.pkey"
 local evp_macro = require "resty.openssl.include.evp"
+local pkey_macro = require "resty.openssl.include.evp.pkey"
 local util = require "resty.openssl.util"
 local digest_lib = require "resty.openssl.digest"
 local rsa_lib = require "resty.openssl.rsa"
@@ -21,16 +22,20 @@ local ec_lib = require "resty.openssl.ec"
 local ecx_lib = require "resty.openssl.ecx"
 local objects_lib = require "resty.openssl.objects"
 local jwk_lib = require "resty.openssl.auxiliary.jwk"
+local ctx_lib = require "resty.openssl.ctx"
 local ctypes = require "resty.openssl.auxiliary.ctypes"
 local format_error = require("resty.openssl.err").format_error
 
 local OPENSSL_11_OR_LATER = require("resty.openssl.version").OPENSSL_11_OR_LATER
 local OPENSSL_111_OR_LATER = require("resty.openssl.version").OPENSSL_111_OR_LATER
+local OPENSSL_30 = require("resty.openssl.version").OPENSSL_30
 local BORINGSSL = require("resty.openssl.version").BORINGSSL
 
 local ptr_of_uint = ctypes.ptr_of_uint
 local ptr_of_size_t = ctypes.ptr_of_size_t
+local ptr_of_int = ctypes.ptr_of_int
 
+local null = ctypes.null
 local load_pem_args = { null, null, null }
 local load_der_args = { null }
 
@@ -163,14 +168,14 @@ local function generate_param(key_type, config)
     if nid == 0 then
       return nil, "unknown curve " .. curve
     end
-    if evp_macro.EVP_PKEY_CTX_set_ec_paramgen_curve_nid(pctx, nid) <= 0 then
+    if pkey_macro.EVP_PKEY_CTX_set_ec_paramgen_curve_nid(pctx, nid) <= 0 then
       return nil, format_error("EVP_PKEY_CTX_ctrl: EC: curve_nid")
     end
     if not BORINGSSL then
       -- use the named-curve encoding for best backward-compatibilty
       -- and for playing well with go:crypto/x509
       -- # define OPENSSL_EC_NAMED_CURVE  0x001
-      if evp_macro.EVP_PKEY_CTX_set_ec_param_enc(pctx, 1) <= 0 then
+      if pkey_macro.EVP_PKEY_CTX_set_ec_param_enc(pctx, 1) <= 0 then
         return nil, format_error("EVP_PKEY_CTX_ctrl: EC: param_enc")
       end
     end
@@ -179,11 +184,7 @@ local function generate_param(key_type, config)
     if not config.param and not bits then
       bits = 2048
     end
-    -- EVP_PKEY_CTX_set_dh_paramgen_prime_len
-    if bits and C.EVP_PKEY_CTX_ctrl(pctx,
-            evp_macro.EVP_PKEY_DH, evp_macro.EVP_PKEY_OP_PARAMGEN,
-            evp_macro.EVP_PKEY_CTRL_DH_PARAMGEN_PRIME_LEN,
-            bits, nil) <= 0 then
+    if bits and pkey_macro.EVP_PKEY_CTX_set_dh_paramgen_prime_len(pctx, bits) <= 0 then
       return nil, format_error("EVP_PKEY_CTX_ctrl: DH: bits")
     end
   end
@@ -296,7 +297,7 @@ local function generate_key(config)
       return nil, "bits out of range"
     end
 
-    if evp_macro.EVP_PKEY_CTX_set_rsa_keygen_bits(pctx, bits) <= 0 then
+    if pkey_macro.EVP_PKEY_CTX_set_rsa_keygen_bits(pctx, bits) <= 0 then
       return nil, format_error("EVP_PKEY_CTX_ctrl: RSA: bits")
     end
 
@@ -308,7 +309,7 @@ local function generate_key(config)
       end
       C.BN_set_word(exp, config.exp)
 
-      if evp_macro.EVP_PKEY_CTX_set_rsa_keygen_pubexp(pctx, exp) <= 0 then
+      if pkey_macro.EVP_PKEY_CTX_set_rsa_keygen_pubexp(pctx, exp) <= 0 then
         return nil, format_error("EVP_PKEY_CTX_ctrl: RSA: exp")
       end
     end
@@ -427,7 +428,7 @@ function _M.new(s, opts)
 
   ffi_gc(ctx, C.EVP_PKEY_free)
 
-  local key_type = C.EVP_PKEY_base_id(ctx)
+  local key_type = OPENSSL_30 and C.EVP_PKEY_get_base_id(ctx) or C.EVP_PKEY_base_id(ctx)
   if key_type == 0 then
     return nil, "pkey.new: cannot get key_type"
   end
@@ -438,7 +439,7 @@ function _M.new(s, opts)
 
   -- although OpenSSL discourages to use this size for digest/verify
   -- but this is good enough for now
-  local buf_size = C.EVP_PKEY_size(ctx)
+  local buf_size = OPENSSL_30 and C.EVP_PKEY_get_size(ctx) or C.EVP_PKEY_size(ctx)
 
   local self = setmetatable({
     ctx = ctx,
@@ -459,6 +460,40 @@ end
 
 function _M:get_key_type()
   return objects_lib.nid2table(self.key_type)
+end
+
+function _M:get_default_digest_type()
+  if BORINGSSL then
+    return nil, "BoringSSL doesn't have default digest for pkey"
+  end
+
+  local nid = ptr_of_int()
+  local code = C.EVP_PKEY_get_default_digest_nid(self.ctx, nid)
+  if code == -2 then
+    return nil, "operation is not supported by the public key algorithm"
+  elseif code <= 0 then
+    return nil, format_error("get_default_digest", code)
+  end
+
+  local ret = objects_lib.nid2table(nid[0])
+  ret.mandatory = code == 2
+  return ret
+end
+
+function _M:get_provider_name()
+  if not OPENSSL_30 then
+    return false, "pkey:get_provider_name is not supported"
+  end
+  local p = C.EVP_PKEY_get0_provider(self.ctx)
+  if p == nil then
+    return nil
+  end
+  return ffi_str(C.OSSL_PROVIDER_get0_name(p))
+end
+
+if OPENSSL_30 then
+  local param_lib = require "resty.openssl.param"
+  _M.settable_params, _M.set_params, _M.gettable_params, _M.get_param = param_lib.get_params_func("EVP_PKEY", "key_type")
 end
 
 local get_pkey_key
@@ -595,7 +630,7 @@ local function asymmetric_routine(self, s, op, padding)
 
   -- EVP_PKEY_CTX_ctrl must be called after *_init
   if self.key_type == evp_macro.EVP_PKEY_RSA and padding then
-    if evp_macro.EVP_PKEY_CTX_set_rsa_padding(pkey_ctx, padding) ~= 1 then
+    if pkey_macro.EVP_PKEY_CTX_set_rsa_padding(pkey_ctx, padding) ~= 1 then
       return nil, format_error("pkey:asymmetric_routine EVP_PKEY_CTX_set_rsa_padding")
     end
     self.rsa_padding = padding
@@ -647,28 +682,32 @@ local function sign_verify_prepare(self, fint, md_alg, padding, opts)
   end
   ffi_gc(md_ctx, C.EVP_MD_CTX_free)
 
-  local dtyp
+  local algo
   if md_alg then
-    dtyp = C.EVP_get_digestbyname(md_alg)
-    if dtyp == nil then
+    if OPENSSL_30 then
+      algo = C.EVP_MD_fetch(ctx_lib.get_libctx(), md_alg, nil)
+    else
+      algo = C.EVP_get_digestbyname(md_alg)
+    end
+    if algo == nil then
       return nil, string.format("pkey:sign_verify_prepare: invalid digest type \"%s\"", md_alg)
     end
   end
 
   local ppkey_ctx = evp_pkey_ctx_ptr_ptr_ct()
   ppkey_ctx[0] = pkey_ctx
-  if fint(md_ctx, ppkey_ctx, dtyp, nil, self.ctx) ~= 1 then
+  if fint(md_ctx, ppkey_ctx, algo, nil, self.ctx) ~= 1 then
     return nil, format_error("pkey:sign_verify_prepare: Init failed")
   end
 
   if self.key_type == evp_macro.EVP_PKEY_RSA then
     if padding then
-      if evp_macro.EVP_PKEY_CTX_set_rsa_padding(ppkey_ctx[0], padding) ~= 1 then
+      if pkey_macro.EVP_PKEY_CTX_set_rsa_padding(ppkey_ctx[0], padding) ~= 1 then
         return nil, format_error("pkey:sign_verify_prepare EVP_PKEY_CTX_set_rsa_padding")
       end
     end
     if opts and opts.pss_saltlen and padding ~= rsa_macro.paddings.RSA_PKCS1_PSS_PADDING then
-      if evp_macro.EVP_PKEY_CTX_set_rsa_pss_saltlen(ppkey_ctx[0], opts.pss_saltlen) ~= 1 then
+      if pkey_macro.EVP_PKEY_CTX_set_rsa_pss_saltlen(ppkey_ctx[0], opts.pss_saltlen) ~= 1 then
         return nil, format_error("pkey:sign_verify_prepare EVP_PKEY_CTX_set_rsa_pss_saltlen")
       end
     end
@@ -689,6 +728,8 @@ function _M:sign(digest, md_alg, padding, opts)
       -- we can still support earilier version with *Update and *Final
       -- but we choose to not relying on the legacy interface for simplicity
       return nil, "pkey:sign: new-style sign only available in OpenSSL 1.1 or later"
+    elseif BORINGSSL and not md_alg and not self.key_type_is_ecx then
+      return nil, "pkey:sign: BoringSSL doesn't provide default digest, md_alg must be specified"
     end
 
     local md_ctx, err = sign_verify_prepare(self, C.EVP_DigestSignInit, md_alg, padding, opts)
@@ -719,6 +760,8 @@ function _M:verify(signature, digest, md_alg, padding, opts)
       -- we can still support earilier version with *Update and *Final
       -- but we choose to not relying on the legacy interface for simplicity
       return nil, "pkey:verify: new-style verify only available in OpenSSL 1.1 or later"
+    elseif BORINGSSL and not md_alg and not self.key_type_is_ecx then
+      return nil, "pkey:verify: BoringSSL doesn't provide default digest, md_alg must be specified"
     end
 
     local md_ctx, err = sign_verify_prepare(self, C.EVP_DigestVerifyInit, md_alg, padding, opts)

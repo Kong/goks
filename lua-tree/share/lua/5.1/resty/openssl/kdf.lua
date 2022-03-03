@@ -2,16 +2,19 @@ local ffi = require "ffi"
 local C = ffi.C
 local ffi_gc = ffi.gc
 local ffi_str = ffi.string
-local ffi_cast = ffi.cast
 
 require("resty.openssl.objects")
-local kdf_macro = require "resty.openssl.include.kdf"
+require("resty.openssl.include.evp.md")
+-- used by legacy EVP_PKEY_derive interface
+require("resty.openssl.include.evp.pkey")
+local kdf_macro = require "resty.openssl.include.evp.kdf"
+local ctx_lib = require "resty.openssl.ctx"
 local format_error = require("resty.openssl.err").format_error
 local version_num = require("resty.openssl.version").version_num
 local version_text = require("resty.openssl.version").version_text
 local BORINGSSL = require("resty.openssl.version").BORINGSSL
+local OPENSSL_30 = require("resty.openssl.version").OPENSSL_30
 local ctypes = require "resty.openssl.auxiliary.ctypes"
-local EVP_PKEY_OP_DERIVE = require("resty.openssl.include.evp").EVP_PKEY_OP_DERIVE
 
 --[[
 https://wiki.openssl.org/index.php/EVP_Key_Derivation
@@ -127,8 +130,6 @@ local options_schema = {
   scrypt_p      = { TYPE_NUMBER, nil, NID_id_scrypt },
 }
 
-local void_ptr = ctypes.void_ptr
-
 function _M.derive(options)
   local typ = options.type
   if not typ then
@@ -167,7 +168,11 @@ function _M.derive(options)
   end
 
   local md
-  md = C.EVP_get_digestbyname(options.md or "sha1")
+  if OPENSSL_30 then
+    md = C.EVP_MD_fetch(ctx_lib.get_libctx(), options.md or 'sha1', options.properties)
+  else
+    md = C.EVP_get_digestbyname(options.md or 'sha1')
+  end
   if md == nil then
     return nil, string.format("kdf.derive: invalid digest type \"%s\"", md)
   end
@@ -212,7 +217,6 @@ function _M.derive(options)
   -- end legacay low level routines
 
   -- begin EVP_PKEY_derive routines
-  md = ffi_cast(void_ptr, md)
   local outlen = ctypes.ptr_of_uint64(options.outlen)
 
   local ctx = C.EVP_PKEY_CTX_new_id(typ, nil)
@@ -225,49 +229,38 @@ function _M.derive(options)
   end
 
   if typ == NID_tls1_prf then
-    if 1 ~= C.EVP_PKEY_CTX_ctrl(ctx, -1, EVP_PKEY_OP_DERIVE,
-        kdf_macro.EVP_PKEY_CTRL_TLS_MD, 0, md) then
-      return nil, format_error("kdf.derive: EVP_PKEY_CTRL_TLS_MD")
+    if kdf_macro.EVP_PKEY_CTX_set_tls1_prf_md(ctx, md) ~= 1 then
+      return nil, format_error("kdf.derive: EVP_PKEY_CTX_set_tls1_prf_md")
     end
-    if 1 ~= C.EVP_PKEY_CTX_ctrl(ctx, -1, EVP_PKEY_OP_DERIVE,
-        kdf_macro.EVP_PKEY_CTRL_TLS_SECRET,
-        #options.tls1_prf_secret, ffi_cast(void_ptr, options.tls1_prf_secret)) then
-      return nil, format_error("kdf.derive: EVP_PKEY_CTRL_TLS_SECRET")
+    if kdf_macro.EVP_PKEY_CTX_set1_tls1_prf_secret(ctx, options.tls1_prf_secret) ~= 1 then
+      return nil, format_error("kdf.derive: EVP_PKEY_CTX_set1_tls1_prf_secret")
     end
-    if 1 ~= C.EVP_PKEY_CTX_ctrl(ctx, -1, EVP_PKEY_OP_DERIVE,
-        kdf_macro.EVP_PKEY_CTRL_TLS_SEED,
-        #options.tls1_prf_seed, ffi_cast(void_ptr, options.tls1_prf_seed)) then
-      return nil, format_error("kdf.derive: EVP_PKEY_CTRL_TLS_SEED")
+    if kdf_macro.EVP_PKEY_CTX_add1_tls1_prf_seed(ctx, options.tls1_prf_seed) ~= 1 then
+      return nil, format_error("kdf.derive: EVP_PKEY_CTX_add1_tls1_prf_seed")
     end
   elseif typ == NID_hkdf then
-    if 1 ~= C.EVP_PKEY_CTX_ctrl(ctx, -1, EVP_PKEY_OP_DERIVE,
-        kdf_macro.EVP_PKEY_CTRL_HKDF_MD, 0, md) then
-      return nil, format_error("kdf.derive: EVP_PKEY_CTRL_HKDF_MD")
+    if kdf_macro.EVP_PKEY_CTX_set_hkdf_md(ctx, md) ~= 1 then
+      return nil, format_error("kdf.derive: EVP_PKEY_CTX_set_hkdf_md")
     end
-    if options.salt and 1 ~= C.EVP_PKEY_CTX_ctrl(ctx, -1, EVP_PKEY_OP_DERIVE,
-        kdf_macro.EVP_PKEY_CTRL_HKDF_SALT,
-        #options.salt, ffi_cast(void_ptr, options.salt)) then
-      return nil, format_error("kdf.derive: EVP_PKEY_CTRL_HKDF_SALT")
+    if options.salt and
+      kdf_macro.EVP_PKEY_CTX_set1_hkdf_salt(ctx, options.salt) ~= 1 then
+      return nil, format_error("kdf.derive: EVP_PKEY_CTX_set1_hkdf_salt")
     end
-    if options.hkdf_key and 1 ~= C.EVP_PKEY_CTX_ctrl(ctx, -1, EVP_PKEY_OP_DERIVE,
-        kdf_macro.EVP_PKEY_CTRL_HKDF_KEY,
-        #options.hkdf_key, ffi_cast(void_ptr, options.hkdf_key)) then
-      return nil, format_error("kdf.derive: EVP_PKEY_CTRL_HKDF_KEY")
+    if options.hkdf_key and
+      kdf_macro.EVP_PKEY_CTX_set1_hkdf_key(ctx, options.hkdf_key) ~= 1 then
+      return nil, format_error("kdf.derive: EVP_PKEY_CTX_set1_hkdf_key")
     end
-    if options.hkdf_info and 1 ~= C.EVP_PKEY_CTX_ctrl(ctx, -1, EVP_PKEY_OP_DERIVE,
-        kdf_macro.EVP_PKEY_CTRL_HKDF_INFO,
-        #options.hkdf_info, ffi_cast(void_ptr, options.hkdf_info)) then
-      return nil, format_error("kdf.derive: EVP_PKEY_CTRL_HKDF_INFO")
+    if options.hkdf_info and
+      kdf_macro.EVP_PKEY_CTX_add1_hkdf_info(ctx, options.hkdf_info) ~= 1 then
+      return nil, format_error("kdf.derive: EVP_PKEY_CTX_add1_hkdf_info")
     end
     if options.hkdf_mode then
       if version_num >= 0x10101000 then
-        if 1 ~= C.EVP_PKEY_CTX_ctrl(ctx, -1, EVP_PKEY_OP_DERIVE,
-          kdf_macro.EVP_PKEY_CTRL_HKDF_MODE,
-          options.hkdf_mode, nil) then
-          return nil, format_error("kdf.derive: EVP_PKEY_CTRL_HKDF_MODE")
+        if kdf_macro.EVP_PKEY_CTX_set_hkdf_mode(ctx, options.hkdf_mode) ~= 1 then
+          return nil, format_error("kdf.derive: EVP_PKEY_CTX_set_hkdf_mode")
         end
         if options.hkdf_mode == _M.HKDEF_MODE_EXTRACT_ONLY then
-          local md_size = C.EVP_MD_size(md)
+          local md_size = OPENSSL_30 and C.EVP_MD_get_size(md) or C.EVP_MD_size(md)
           if options.outlen ~= md_size then
             options.outlen = md_size
             ngx.log(ngx.WARN, "hkdf_mode EXTRACT_ONLY outputs fixed length of ", md_size,
@@ -290,6 +283,104 @@ function _M.derive(options)
   -- end EVP_PKEY_derive routines
 
   return ffi_str(buf, options.outlen)
+end
+
+if not OPENSSL_30 then
+  return _M
+end
+
+_M.derive_legacy = _M.derive
+_M.derive = nil
+
+-- OPENSSL 3.0 style API
+local param_lib = require "resty.openssl.param"
+local SIZE_MAX = ctypes.SIZE_MAX
+
+local mt = {__index = _M}
+
+local kdf_ctx_ptr_ct = ffi.typeof('EVP_KDF_CTX*')
+
+function _M.new(typ, properties)
+  local algo = C.EVP_KDF_fetch(ctx_lib.get_libctx(), typ, properties)
+  if algo == nil then
+    return nil, format_error(string.format("mac.new: invalid mac type \"%s\"", typ))
+  end
+
+  local ctx = C.EVP_KDF_CTX_new(algo)
+  if ctx == nil then
+    return nil, "mac.new: failed to create EVP_MAC_CTX"
+  end
+  ffi_gc(ctx, C.EVP_KDF_CTX_free)
+
+  local buf
+  local buf_size = tonumber(C.EVP_KDF_CTX_get_kdf_size(ctx))
+  if buf_size == SIZE_MAX then -- no fixed size
+    buf_size = nil
+  else
+    buf = ctypes.uchar_array(buf_size)
+  end
+
+  return setmetatable({
+    ctx = ctx,
+    algo = algo,
+    buf = buf,
+    buf_size = buf_size,
+  }, mt), nil
+end
+
+function _M.istype(l)
+  return l and l.ctx and ffi.istype(kdf_ctx_ptr_ct, l.ctx)
+end
+
+function _M:get_provider_name()
+  local p = C.EVP_KDF_get0_provider(self.algo)
+  if p == nil then
+    return nil
+  end
+  return ffi_str(C.OSSL_PROVIDER_get0_name(p))
+end
+
+_M.settable_params, _M.set_params, _M.gettable_params, _M.get_param = param_lib.get_params_func("EVP_KDF_CTX")
+
+function _M:derive(outlen, options, options_count)
+  if not _M.istype(self) then
+    return _M.derive_legacy(self)
+  end
+
+  if self.buf_size and outlen then
+    return nil, string.format("kdf:derive: this KDF has fixed output size %d, ".. 
+                              "it can't be set manually", self.buf_size)
+  end
+
+  outlen = self.buf_size or outlen
+  local buf = self.buf or ctypes.uchar_array(outlen)
+
+  if options_count then
+    options_count = options_count - 1
+  else
+    options_count = 0
+    for k, v in pairs(options) do options_count = options_count + 1 end
+  end
+
+  local param, err
+  if options_count > 0 then
+    local schema = self:settable_params(true) -- raw schema
+    param, err = param_lib.construct(options, nil, schema)
+    if err then
+      return nil, "kdf:derive: " .. err
+    end
+  end
+
+  if C.EVP_KDF_derive(self.ctx, buf, outlen, param) ~= 1 then
+    return nil, format_error("kdf:derive")
+  end
+
+  return ffi_str(buf, outlen)
+end
+
+function _M:reset()
+  C.EVP_KDF_CTX_reset(self.ctx)
+  return true
 end
 
 return _M

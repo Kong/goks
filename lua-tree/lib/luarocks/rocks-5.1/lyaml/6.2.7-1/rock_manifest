@@ -10,7 +10,7 @@ rock_manifest = {
       }
    },
    lib = {
-      ["yaml.so"] = "ca095474fa91e7d5f578255bd07e4d42"
+      ["yaml.so"] = "bc7f5c52a78c0afecc12c67dd4098e96"
    },
    lua = {
       lyaml = {

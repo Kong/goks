@@ -74,6 +74,18 @@ local cipher_suites = {
                          .. "AES256-SHA:"
                          .. "DES-CBC3-SHA",
     prefer_server_ciphers = "on",
+  },
+                     fips = { -- https://wiki.openssl.org/index.php/FIPS_mode_and_TLS
+                          -- TLSv1.0 and TLSv1.1 is not completely not FIPS compliant,
+                          -- but must be used under certain condititions like key sizes,
+                          -- signatures in the full chain that Kong can't control.
+                          -- In that case, we disables TLSv1.0 and TLSv1.1 and user
+                          -- can optionally turn them on if they are aware of the caveats.
+                          -- No FIPS compliant predefined DH group available prior to
+                          -- OpenSSL 3.0.
+                protocols = "TLSv1.2",
+                  ciphers = "TLSv1.2+FIPS:kRSA+FIPS:!eNULL:!aNULL",
+    prefer_server_ciphers = "on",
   }
 }
 
@@ -159,6 +171,10 @@ local DYNAMIC_KEY_NAMESPACES = {
   },
   {
     prefix = "pluginserver_",
+    ignore = EMPTY,
+  },
+  {
+    prefix = "vault_",
     ignore = EMPTY,
   },
 }
@@ -517,6 +533,7 @@ local CONF_INFERENCES = {
   dns_order = { typ = "array" },
   dns_valid_ttl = { typ = "number" },
   dns_stale_ttl = { typ = "number" },
+  dns_cache_size = { typ = "number" },
   dns_not_found_ttl = { typ = "number" },
   dns_error_ttl = { typ = "number" },
   dns_no_sync = { typ = "boolean" },
@@ -604,6 +621,7 @@ local CONF_INFERENCES = {
                   "emerg",
                 }
               },
+  vaults = { typ = "array" },
   plugins = { typ = "array" },
   anonymous_reports = { typ = "boolean" },
   nginx_optimizations = {
@@ -631,7 +649,7 @@ local CONF_INFERENCES = {
   cluster_server_name = { typ = "string" },
   cluster_data_plane_purge_delay = { typ = "number" },
   cluster_ocsp = { enum = { "on", "off", "optional" } },
-  cluster_v2 = { typ = "boolean", },
+  cluster_max_payload = { typ = "number" },
 
   kic = { typ = "boolean" },
   pluginserver_names = { typ = "array" },
@@ -674,6 +692,54 @@ local _nop_tostring_mt = {
 }
 
 
+local function infer_value(value, typ, opts)
+  if type(value) == "string" then
+    if not opts.from_kong_env then
+      -- remove trailing comment, if any
+      -- and remove escape chars from octothorpes
+      value = string.gsub(value, "[^\\]#.-$", "")
+      value = string.gsub(value, "\\#", "#")
+    end
+
+    value = pl_stringx.strip(value)
+  end
+
+  -- transform {boolean} values ("on"/"off" aliasing to true/false)
+  -- transform {ngx_boolean} values ("on"/"off" aliasing to on/off)
+  -- transform {explicit string} values (number values converted to strings)
+  -- transform {array} values (comma-separated strings)
+  if typ == "boolean" then
+    value = value == true or value == "on" or value == "true"
+
+  elseif typ == "ngx_boolean" then
+    value = (value == "on" or value == true) and "on" or "off"
+
+  elseif typ == "string" then
+    value = tostring(value) -- forced string inference
+
+  elseif typ == "number" then
+    value = tonumber(value) -- catch ENV variables (strings) that are numbers
+
+  elseif typ == "array" and type(value) == "string" then
+    -- must check type because pl will already convert comma
+    -- separated strings to tables (but not when the arr has
+    -- only one element)
+    value = setmetatable(pl_stringx.split(value, ","), nil) -- remove List mt
+
+    for i = 1, #value do
+      value[i] = pl_stringx.strip(value[i])
+    end
+  end
+
+  if value == "" then
+    -- unset values are removed
+    value = nil
+  end
+
+  return value
+end
+
+
 -- Validate properties (type/enum/custom) and infer their type.
 -- @param[type=table] conf The configuration table to treat.
 local function check_and_infer(conf, opts)
@@ -681,53 +747,10 @@ local function check_and_infer(conf, opts)
 
   for k, value in pairs(conf) do
     local v_schema = CONF_INFERENCES[k] or {}
-    local typ = v_schema.typ
 
-    if type(value) == "string" then
-      if not opts.from_kong_env then
-        -- remove trailing comment, if any
-        -- and remove escape chars from octothorpes
-        value = string.gsub(value, "[^\\]#.-$", "")
-        value = string.gsub(value, "\\#", "#")
-      end
+    value = infer_value(value, v_schema.typ, opts)
 
-      value = pl_stringx.strip(value)
-    end
-
-    -- transform {boolean} values ("on"/"off" aliasing to true/false)
-    -- transform {ngx_boolean} values ("on"/"off" aliasing to on/off)
-    -- transform {explicit string} values (number values converted to strings)
-    -- transform {array} values (comma-separated strings)
-    if typ == "boolean" then
-      value = value == true or value == "on" or value == "true"
-
-    elseif typ == "ngx_boolean" then
-      value = (value == "on" or value == true) and "on" or "off"
-
-    elseif typ == "string" then
-      value = tostring(value) -- forced string inference
-
-    elseif typ == "number" then
-      value = tonumber(value) -- catch ENV variables (strings) that are numbers
-
-    elseif typ == "array" and type(value) == "string" then
-      -- must check type because pl will already convert comma
-      -- separated strings to tables (but not when the arr has
-      -- only one element)
-      value = setmetatable(pl_stringx.split(value, ","), nil) -- remove List mt
-
-      for i = 1, #value do
-        value[i] = pl_stringx.strip(value[i])
-      end
-    end
-
-    if value == "" then
-      -- unset values are removed
-      value = nil
-    end
-
-    typ = typ or "string"
-
+    local typ = v_schema.typ or "string"
     if value and not typ_checks[typ](value) then
       errors[#errors + 1] = fmt("%s is not a %s: '%s'", k, typ,
                                 tostring(value))
@@ -774,6 +797,7 @@ local function check_and_infer(conf, opts)
   end
 
   if conf.database == "cassandra" then
+    log.deprecation("Support for Cassandra is deprecated. Please refer to https://konghq.com/blog/cassandra-support-deprecated", {after = "2.7", removal = "4.0"})
     if string.find(conf.cassandra_lb_policy, "DCAware", nil, true)
        and not conf.cassandra_local_datacenter
     then
@@ -1077,6 +1101,10 @@ local function check_and_infer(conf, opts)
     errors[#errors + 1] = "cluster_data_plane_purge_delay must be 60 or greater"
   end
 
+  if conf.cluster_max_payload < 4194304 then
+    errors[#errors + 1] = "cluster_max_payload must be 4194304 (4MB) or greater"
+  end
+
   if conf.role == "control_plane" or conf.role == "data_plane" then
     if not conf.cluster_cert or not conf.cluster_cert_key then
       errors[#errors + 1] = "cluster certificate and key must be provided to use Hybrid mode"
@@ -1335,7 +1363,10 @@ local function load(path, custom_conf, opts)
   else
     log.verbose("reading config file at %s", path)
 
-    from_file_conf = load_config_file(path)
+    from_file_conf, err = load_config_file(path)
+    if not from_file_conf then
+      return nil, "could not load config file: " .. err
+    end
   end
 
   -----------------------
@@ -1439,6 +1470,49 @@ local function load(path, custom_conf, opts)
                               tablex.union(opts, { defaults_only = true, }),
                               user_conf)
 
+  ---------------------------------
+  -- Dereference process references
+  ---------------------------------
+
+  local loaded_vaults
+  do
+    -- validation
+    local vaults_array = infer_value(conf.vaults, CONF_INFERENCES["vaults"].typ, opts)
+
+    -- merge vaults
+    local vaults = {}
+
+    if #vaults_array > 0 and vaults_array[1] ~= "off" then
+      for i = 1, #vaults_array do
+        local vault_name = pl_stringx.strip(vaults_array[i])
+        if vault_name ~= "off" then
+          if vault_name == "bundled" then
+            vaults = tablex.merge(constants.BUNDLED_VAULTS, vaults, true)
+
+          else
+            vaults[vault_name] = true
+          end
+        end
+      end
+    end
+
+    loaded_vaults = setmetatable(vaults, _nop_tostring_mt)
+
+    local vault = require "kong.pdk.vault".new()
+    for k, v in pairs(conf) do
+      if vault.is_reference(v) then
+        local deref, deref_err = vault.get(v)
+        if deref == nil or deref_err then
+          return nil, fmt("failed to dereference '%s': %s for config option '%s'", v, deref_err, k)
+        end
+
+        if deref ~= nil then
+          conf[k] = deref
+        end
+      end
+    end
+  end
+
   -- validation
   local ok, err, errors = check_and_infer(conf, opts)
 
@@ -1451,6 +1525,7 @@ local function load(path, custom_conf, opts)
   end
 
   conf = tablex.merge(conf, defaults) -- intersection (remove extraneous properties)
+  conf.loaded_vaults = loaded_vaults
 
   local default_nginx_main_user = false
   local default_nginx_user = false

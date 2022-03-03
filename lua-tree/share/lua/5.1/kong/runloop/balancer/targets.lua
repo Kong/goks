@@ -8,10 +8,10 @@
 
 local singletons = require "kong.singletons"
 
-local dns_client = require "resty.dns.client"
+local dns_client = require "kong.resty.dns.client"
 local upstreams = require "kong.runloop.balancer.upstreams"
 local balancers = require "kong.runloop.balancer.balancers"
-local dns_utils = require "resty.dns.utils"
+local dns_utils = require "kong.resty.dns.utils"
 
 local ngx = ngx
 local null = ngx.null
@@ -22,11 +22,12 @@ local string_match  = string.match
 local ipairs = ipairs
 local tonumber = tonumber
 local table_sort = table.sort
---local assert = assert
+local assert = assert
 
+local CRIT = ngx.CRIT
+local DEBUG = ngx.DEBUG
 local ERR = ngx.ERR
 local WARN = ngx.WARN
-local DEBUG = ngx.DEBUG
 
 local SRV_0_WEIGHT = 1      -- SRV record with weight 0 should be hit minimally, hence we replace by 1
 local EMPTY = setmetatable({},
@@ -38,11 +39,15 @@ local targets_M = {}
 
 -- forward local declarations
 local resolve_timer_callback
+local resolve_timer_running
 local queryDns
 
 function targets_M.init()
   dns_client = require("kong.tools.dns")(kong.configuration)    -- configure DNS client
-  ngx.timer.every(1, resolve_timer_callback)
+
+  if not resolve_timer_running then
+    resolve_timer_running = assert(ngx.timer.at(1, resolve_timer_callback))
+  end
 end
 
 
@@ -236,6 +241,13 @@ function resolve_timer_callback()
       queryDns(target, false) -- timer-context; cacheOnly always false
     end
   end
+
+  local err
+  resolve_timer_running, err = ngx.timer.at(1, resolve_timer_callback)
+  if not resolve_timer_running then
+    log(CRIT, "could not reschedule DNS resolver timer: ", err)
+  end
+
 end
 
 

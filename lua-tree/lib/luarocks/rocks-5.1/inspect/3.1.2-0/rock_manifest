@@ -1,0 +1,10 @@
+rock_manifest = {
+   doc = {
+      ["CHANGELOG.md"] = "3c9506bcb84179016357addfa50b9a1a",
+      ["README.md"] = "0f9d098e97ea44160ffd92d6fb5884a5"
+   },
+   ["inspect-3.1.2-0.rockspec"] = "83b40d11d6f959563c80c0afaa296c31",
+   lua = {
+      ["inspect.lua"] = "34ced18cde4ddcaa24540b8818378c20"
+   }
+}

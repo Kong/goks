@@ -4,7 +4,7 @@ rock_manifest = {
       ["README.md"] = "c969c93e27b1ded788fe11dbe78285c4"
    },
    lib = {
-      ["lsyslog.so"] = "3cd9226736b731e2c9dba635fa1fa350"
+      ["lsyslog.so"] = "cdd7d3c28e10943a23d2735aa5ed6f6e"
    },
    lua = {
       logging = {

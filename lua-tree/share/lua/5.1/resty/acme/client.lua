@@ -6,7 +6,7 @@ local openssl = require("resty.acme.openssl")
 local encode_base64url = util.encode_base64url
 local decode_base64url = util.decode_base64url
 
-local log = ngx.log
+local log = util.log
 local ngx_ERR = ngx.ERR
 local ngx_INFO = ngx.INFO
 local ngx_DEBUG = ngx.DEBUG
@@ -21,7 +21,7 @@ end
 local wait_backoff_series = {1, 1, 2, 3, 5, 8, 13, 21}
 
 local _M = {
-  _VERSION = '0.7.1'
+  _VERSION = '0.7.2'
 }
 local mt = {__index = _M}
 

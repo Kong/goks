@@ -1,13 +1,18 @@
 local constants = require "kong.constants"
 local utils = require "kong.tools.utils"
 
+
 local utils_toposort = utils.topological_sort
+local sort = table.sort
+
+
+local CORE_ENTITIES = constants.CORE_ENTITIES
 
 
 local sort_core_first do
   local CORE_SCORE = {}
-  for _, v in ipairs(constants.CORE_ENTITIES) do
-    CORE_SCORE[v] = 1
+  for i = 1, #CORE_ENTITIES do
+    CORE_SCORE[CORE_ENTITIES[i]] = 1
   end
   CORE_SCORE["workspaces"] = 2
 
@@ -39,7 +44,7 @@ end
 -- @usage
 -- local res = topological_sort({ services, routes, plugins, consumers })
 -- assert.same({ consumers, services, routes, plugins }, res)
-local declarative_topological_sort = function(schemas)
+local schema_topological_sort = function(schemas)
   local s
   local schemas_by_name = {}
   local copy = {}
@@ -51,7 +56,7 @@ local declarative_topological_sort = function(schemas)
   end
   schemas = copy
 
-  table.sort(schemas, sort_core_first)
+  sort(schemas, sort_core_first)
 
   -- given a schema, return all the schemas to which it has references
   -- (and are in the list of the `schemas` provided)
@@ -77,4 +82,5 @@ local declarative_topological_sort = function(schemas)
   return utils_toposort(schemas, get_schema_neighbors)
 end
 
-return declarative_topological_sort
+
+return schema_topological_sort

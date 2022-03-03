@@ -6,5 +6,5 @@ rock_manifest = {
    lua = {
       ["luaxxhash.lua"] = "b63c5567ff91fc89e1d00bfe1dd600d7"
    },
-   ["luaxxhash-1.0.0-1.rockspec"] = "ea59d29e0981d967a68df15685e61071"
+   ["luaxxhash-1.0.0-1.rockspec"] = "2746782651bb1f14fb9b4a20e7dd3cc9"
 }
