@@ -394,7 +394,9 @@ func TestValidator_SchemaAsJSON(t *testing.T) {
 					elements, ok := w.(map[string]interface{})
 					assert.True(t, ok)
 					assert.EqualValues(t, 2, len(elements))
-					assert.ElementsMatch(t, []string{"grpc", "grpcs", "http", "https", "tcp", "tls", "udp"},
+					assert.ElementsMatch(t, []string{
+						"grpc", "grpcs", "http", "https", "tcp", "tls", "tls_passthrough", "udp",
+					},
 						elements["one_of"])
 					assert.EqualValues(t, "string", elements["type"])
 				} else {
