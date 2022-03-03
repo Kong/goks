@@ -63,5 +63,8 @@ ffi.cdef(
   typedef struct PKCS12_st PKCS12;
   typedef struct ssl_st SSL;
   typedef struct ssl_ctx_st SSL_CTX;
+  typedef struct evp_kdf_st EVP_KDF;
+  typedef struct evp_kdf_ctx_st EVP_KDF_CTX;
+  typedef struct ossl_lib_ctx_st OSSL_LIB_CTX;
 ]])
 

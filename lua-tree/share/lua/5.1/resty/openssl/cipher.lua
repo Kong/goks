@@ -4,11 +4,14 @@ local ffi_gc = ffi.gc
 local ffi_str = ffi.string
 local ffi_cast = ffi.cast
 
+require "resty.openssl.include.evp.cipher"
 local evp_macro = require "resty.openssl.include.evp"
 local ctypes = require "resty.openssl.auxiliary.ctypes"
+local ctx_lib = require "resty.openssl.ctx"
 local format_error = require("resty.openssl.err").format_error
 local OPENSSL_10 = require("resty.openssl.version").OPENSSL_10
 local OPENSSL_11_OR_LATER = require("resty.openssl.version").OPENSSL_11_OR_LATER
+local OPENSSL_30 = require("resty.openssl.version").OPENSSL_30
 
 local uchar_array = ctypes.uchar_array
 local void_ptr = ctypes.void_ptr
@@ -19,7 +22,7 @@ local mt = {__index = _M}
 
 local cipher_ctx_ptr_ct = ffi.typeof('EVP_CIPHER_CTX*')
 
-function _M.new(typ)
+function _M.new(typ, properties)
   if not typ then
     return nil, "cipher.new: expect type to be defined"
   end
@@ -37,28 +40,53 @@ function _M.new(typ)
     return nil, "cipher.new: failed to create EVP_CIPHER_CTX"
   end
 
-  local dtyp = C.EVP_get_cipherbyname(typ)
-  if dtyp == nil then
-    return nil, string.format("cipher.new: invalid cipher type \"%s\"", typ)
+  local ctyp
+  if OPENSSL_30 then
+    ctyp = C.EVP_CIPHER_fetch(ctx_lib.get_libctx(), typ, properties)
+  else
+    ctyp = C.EVP_get_cipherbyname(typ)
+  end
+  local err_new = string.format("cipher.new: invalid cipher type \"%s\"", typ)
+  if ctyp == nil then
+    return nil, format_error(err_new)
   end
 
-  local code = C.EVP_CipherInit_ex(ctx, dtyp, nil, "", nil, -1)
+  local code = C.EVP_CipherInit_ex(ctx, ctyp, nil, "", nil, -1)
   if code ~= 1 then
-    return nil, format_error("cipher.new")
+    return nil, format_error(err_new)
   end
 
   return setmetatable({
     ctx = ctx,
-    cipher_type = dtyp,
+    algo = ctyp,
     initialized = false,
-    block_size = tonumber(C.EVP_CIPHER_CTX_block_size(ctx)),
-    key_size = tonumber(C.EVP_CIPHER_CTX_key_length(ctx)),
-    iv_size = tonumber(C.EVP_CIPHER_CTX_iv_length(ctx)),
+    block_size = tonumber(OPENSSL_30 and C.EVP_CIPHER_CTX_get_block_size(ctx)
+                                    or C.EVP_CIPHER_CTX_block_size(ctx)),
+    key_size = tonumber(OPENSSL_30 and C.EVP_CIPHER_CTX_get_key_length(ctx)
+                                    or C.EVP_CIPHER_CTX_key_length(ctx)),
+    iv_size = tonumber(OPENSSL_30 and C.EVP_CIPHER_CTX_get_iv_length(ctx)
+                                    or C.EVP_CIPHER_CTX_iv_length(ctx)),
   }, mt), nil
 end
 
 function _M.istype(l)
   return l and l.ctx and ffi.istype(cipher_ctx_ptr_ct, l.ctx)
+end
+
+function _M:get_provider_name()
+  if not OPENSSL_30 then
+    return false, "cipher:get_provider_name is not supported"
+  end
+  local p = C.EVP_CIPHER_get0_provider(self.algo)
+  if p == nil then
+    return nil
+  end
+  return ffi_str(C.OSSL_PROVIDER_get0_name(p))
+end
+
+if OPENSSL_30 then
+  local param_lib = require "resty.openssl.param"
+  _M.settable_params, _M.set_params, _M.gettable_params, _M.get_param = param_lib.get_params_func("EVP_CIPHER_CTX")
 end
 
 function _M:init(key, iv, opts)
@@ -72,8 +100,8 @@ function _M:init(key, iv, opts)
 
   -- always passed in the `EVP_CIPHER` parameter to reinitialized the cipher
   -- it will have a same effect as EVP_CIPHER_CTX_cleanup/EVP_CIPHER_CTX_reset then Init_ex with
-  -- empty cipher_type
-  if C.EVP_CipherInit_ex(self.ctx, self.cipher_type, nil, key, iv, opts.is_encrypt and 1 or 0) == 0 then
+  -- empty algo
+  if C.EVP_CipherInit_ex(self.ctx, self.algo, nil, key, iv, opts.is_encrypt and 1 or 0) == 0 then
     return false, format_error("cipher:init EVP_CipherInit_ex")
   end
 
@@ -216,7 +244,7 @@ function _M:final(s)
   return (ret or "") .. ffi_str(outm, outl[0])
 end
 
-function _M:derive(key, salt, count, md)
+function _M:derive(key, salt, count, md, md_properties)
   if type(key) ~= "string" then
     return nil, nil, "cipher:derive: expect a string at #1"
   elseif salt and type(salt) ~= "string" then
@@ -240,7 +268,12 @@ function _M:derive(key, salt, count, md)
     end
   end
 
-  local mdt = C.EVP_get_digestbyname(md or 'sha1')
+  local mdt
+  if OPENSSL_30 then
+    mdt = C.EVP_MD_fetch(ctx_lib.get_libctx(), md or 'sha1', md_properties)
+  else
+    mdt = C.EVP_get_digestbyname(md or 'sha1')
+  end
   if mdt == nil then
     return nil, nil, string.format("cipher:derive: invalid digest type \"%s\"", md)
   end

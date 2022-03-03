@@ -17,9 +17,14 @@ local pkey_lib = require("resty.openssl.pkey")
 local util = require "resty.openssl.util"
 local txtnid2nid = require("resty.openssl.objects").txtnid2nid
 local ctypes = require "resty.openssl.auxiliary.ctypes"
+local ctx_lib = require "resty.openssl.ctx"
 local format_error = require("resty.openssl.err").format_error
-local OPENSSL_10 = require("resty.openssl.version").OPENSSL_10
-local OPENSSL_11_OR_LATER = require("resty.openssl.version").OPENSSL_11_OR_LATER
+local version = require("resty.openssl.version")
+local OPENSSL_10 = version.OPENSSL_10
+local OPENSSL_11_OR_LATER = version.OPENSSL_11_OR_LATER
+local OPENSSL_30 = version.OPENSSL_30
+local BORINGSSL = version.BORINGSSL
+local BORINGSSL_110 = version.BORINGSSL_110 -- used in boringssl-fips-20190808
 
 -- accessors provides an openssl version neutral interface to lua layer
 -- it doesn't handle any error, expect that to be implemented in
@@ -36,13 +41,26 @@ accessors.get_issuer_name = C.X509_get_issuer_name -- returns internal ptr, we d
 accessors.set_issuer_name = C.X509_set_issuer_name
 accessors.get_signature_nid = C.X509_get_signature_nid
 
-if OPENSSL_11_OR_LATER then
-  -- generally, use get1 if we return a lua table wrapped ctx which doesn't support dup.
-  -- in that case, a new struct is returned from C api, and we will handle gc.
-  -- openssl will increment the reference count for returned ptr, and won't free it when
-  -- parent struct is freed.
-  -- otherwise, use get0, which returns an internal pointer, we don't need to free it up.
-  -- it will be gone together with the parent struct.
+-- generally, use get1 if we return a lua table wrapped ctx which doesn't support dup.
+-- in that case, a new struct is returned from C api, and we will handle gc.
+-- openssl will increment the reference count for returned ptr, and won't free it when
+-- parent struct is freed.
+-- otherwise, use get0, which returns an internal pointer, we don't need to free it up.
+-- it will be gone together with the parent struct.
+
+if BORINGSSL_110 then
+  accessors.get_not_before = C.X509_get0_notBefore -- returns internal ptr, we convert to number
+  accessors.set_not_before = C.X509_set_notBefore
+  accessors.get_not_after = C.X509_get0_notAfter -- returns internal ptr, we convert to number
+  accessors.set_not_after = C.X509_set_notAfter
+  accessors.get_version = function(x509)
+    if x509 == nil or x509.cert_info == nil or x509.cert_info.validity == nil then
+      return nil
+    end
+    return C.ASN1_INTEGER_get(x509.cert_info.version)
+  end
+  accessors.get_serial_number = C.X509_get_serialNumber -- returns internal ptr, we convert to bn
+elseif OPENSSL_11_OR_LATER then
   accessors.get_not_before = C.X509_get0_notBefore -- returns internal ptr, we convert to number
   accessors.set_not_before = C.X509_set1_notBefore
   accessors.get_not_after = C.X509_get0_notAfter -- returns internal ptr, we convert to number
@@ -90,11 +108,15 @@ local mt = { __index = _M, __tostring = tostring }
 local x509_ptr_ct = ffi.typeof("X509*")
 
 -- only PEM format is supported for now
-function _M.new(cert, fmt)
+function _M.new(cert, fmt, properties)
   local ctx
   if not cert then
     -- routine for create a new cert
-    ctx = C.X509_new()
+    if OPENSSL_30 then
+      ctx = C.X509_new_ex(ctx_lib.get_libctx(), properties)
+    else
+      ctx = C.X509_new()
+    end
     if ctx == nil then
       return nil, format_error("x509.new")
     end
@@ -297,7 +319,7 @@ function _M:get_crl_url(return_all)
   end
 end
 
-local function digest(self, cfunc, typ)
+local function digest(self, cfunc, typ, properties)
   -- TODO: dedup the following with resty.openssl.digest
   local ctx
   if OPENSSL_11_OR_LATER then
@@ -311,28 +333,33 @@ local function digest(self, cfunc, typ)
     return nil, "x509:digest: failed to create EVP_MD_CTX"
   end
 
-  local dtyp = C.EVP_get_digestbyname(typ or 'sha1')
-  if dtyp == nil then
+  local algo
+  if OPENSSL_30 then
+    algo = C.EVP_MD_fetch(ctx_lib.get_libctx(), typ or 'sha1', properties)
+  else
+    algo = C.EVP_get_digestbyname(typ or 'sha1')
+  end
+  if algo == nil then
     return nil, string.format("x509:digest: invalid digest type \"%s\"", typ)
   end
 
-  local md_size = C.EVP_MD_size(dtyp)
+  local md_size = OPENSSL_30 and C.EVP_MD_get_size(algo) or C.EVP_MD_size(algo)
   local buf = ctypes.uchar_array(md_size)
   local length = ctypes.ptr_of_uint()
 
-  if cfunc(self.ctx, dtyp, buf, length) ~= 1 then
+  if cfunc(self.ctx, algo, buf, length) ~= 1 then
     return nil, format_error("x509:digest")
   end
 
   return ffi_str(buf, length[0])
 end
 
-function _M:digest(typ)
-  return digest(self, C.X509_digest, typ)
+function _M:digest(typ, properties)
+  return digest(self, C.X509_digest, typ, properties)
 end
 
-function _M:pubkey_digest(typ)
-  return digest(self, C.X509_pubkey_digest, typ)
+function _M:pubkey_digest(typ, properties)
+  return digest(self, C.X509_pubkey_digest, typ, properties)
 end
 
 function _M:check_private_key(key)
@@ -358,16 +385,20 @@ function _M:sign(pkey, digest)
     return false, "x509:sign: expect a pkey instance at #1"
   end
 
+  local digest_algo
   if digest then
     if not digest_lib.istype(digest) then
       return false, "x509:sign: expect a digest instance at #2"
-    elseif not digest.dtyp then
-      return false, "x509:sign: expect a digest instance to have dtyp member"
+    elseif not digest.algo then
+      return false, "x509:sign: expect a digest instance to have algo member"
     end
+    digest_algo = digest.algo
+  elseif BORINGSSL then
+    digest_algo = C.EVP_get_digestbyname('sha256')
   end
 
   -- returns size of signature if success
-  if C.X509_sign(self.ctx, pkey.ctx, digest and digest.dtyp) == 0 then
+  if C.X509_sign(self.ctx, pkey.ctx, digest_algo) == 0 then
     return false, format_error("x509:sign")
   end
 

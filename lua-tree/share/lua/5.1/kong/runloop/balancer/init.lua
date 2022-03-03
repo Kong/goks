@@ -11,13 +11,15 @@ local targets = require "kong.runloop.balancer.targets"
 
 
 -- due to startup/require order, cannot use the ones from 'kong' here
-local dns_client = require "resty.dns.client"
+local dns_client = require "kong.resty.dns.client"
 
 
 local toip = dns_client.toip
+local sub = string.sub
 local ngx = ngx
 local log = ngx.log
 local null = ngx.null
+local header = ngx.header
 local type = type
 local pairs = pairs
 local tostring = tostring
@@ -34,6 +36,13 @@ local WARN = ngx.WARN
 local DEBUG = ngx.DEBUG
 local EMPTY_T = pl_tablex.readonly {}
 
+
+local set_authority
+local set_upstream_cert_and_key
+if ngx.config.subsystem ~= "stream" then
+  set_authority = require("resty.kong.grpc").set_authority
+  set_upstream_cert_and_key = require("resty.kong.tls").set_upstream_cert_and_key
+end
 
 
 -- Calculates hash-value.
@@ -102,6 +111,39 @@ local function get_value_to_hash(upstream, ctx)
     end
   end
   -- nothing found, leave without a hash
+end
+
+
+local function set_cookie(cookie)
+  local prefix = cookie.key .. "="
+  local length = #prefix
+  local path = cookie.path or "/"
+  local cookie_value = prefix .. cookie.value .. "; Path=" .. path .. "; Same-Site=Lax; HttpOnly"
+  local cookie_header = header["Set-Cookie"]
+  local header_type = type(cookie_header)
+  if header_type == "table" then
+    local found
+    local count = #cookie_header
+    for i = 1, count do
+      if sub(cookie_header[i], 1, length) == prefix then
+        cookie_header[i] = cookie_value
+        found = true
+        break
+      end
+    end
+
+    if not found then
+      cookie_header[count+1] = cookie_value
+    end
+
+  elseif header_type == "string" and sub(cookie_header, 1, length) ~= prefix then
+    cookie_header = { cookie_header, cookie_value }
+
+  else
+    cookie_header = cookie_value
+  end
+
+  header["Set-Cookie"] = cookie_header
 end
 
 
@@ -212,7 +254,7 @@ local function execute(balancer_data, ctx)
       -- only add it if it doesn't exist, in case a plugin inserted one
       hash_value = balancer_data.hash_value
       if not hash_value then
-        hash_value = get_value_to_hash(upstream, ctx)
+        hash_value = get_value_to_hash(upstream, ctx) or ""
         balancer_data.hash_value = hash_value
       end
 
@@ -230,7 +272,7 @@ local function execute(balancer_data, ctx)
             return
           end
 
-          res, err = kong.service.set_tls_cert_key(cert.cert, cert.key)
+          res, err = set_upstream_cert_and_key(cert.cert, cert.key)
           if not res then
             log(ERR, "unable to apply upstream client TLS certificate ",
                      client_certificate.id, ": ", err)
@@ -344,7 +386,7 @@ local function set_host_header(balancer_data, upstream_scheme, upstream_host, is
     -- the nginx grpc module does not offer a way to override the
     -- :authority pseudo-header; use our internal API to do so
     if upstream_scheme == "grpc" or upstream_scheme == "grpcs" then
-      local ok, err = kong.service.request.set_header(":authority", new_upstream_host)
+      local ok, err = set_authority(new_upstream_host)
       if not ok then
         log(ERR, "failed to set :authority header: ", err)
       end
@@ -377,6 +419,7 @@ return {
   get_balancer_health = healthcheckers.get_balancer_health,
   stop_healthcheckers = healthcheckers.stop_healthcheckers,
   set_host_header = set_host_header,
+  set_cookie = set_cookie,
 
   -- ones below are exported for test purposes only
   --_create_balancer = create_balancer,

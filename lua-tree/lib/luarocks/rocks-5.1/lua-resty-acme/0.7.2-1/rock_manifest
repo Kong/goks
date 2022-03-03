@@ -1,0 +1,32 @@
+rock_manifest = {
+   doc = {
+      ["CHANGELOG.md"] = "517058a6042eea34380abd30d3feed9d",
+      ["README.md"] = "522cfbc1b193fd70461e88fbca3c3090"
+   },
+   lua = {
+      resty = {
+         acme = {
+            ["autossl.lua"] = "0fb7665d444b6b03ade668417abaf9a3",
+            challenge = {
+               ["http-01.lua"] = "1d0c8d0b40f3850eaa879c4744a5e234",
+               ["tls-alpn-01.lua"] = "08b37c7d88ce220e62b0f7de34d5346a"
+            },
+            ["client.lua"] = "ef6a6391de597660ff6d6bdd869d1830",
+            eab = {
+               ["zerossl-com.lua"] = "6a3bf1fbbc8869b5d1136c6406e51864"
+            },
+            ["openssl.lua"] = "f2c5d896e045484d24c8f3b3be692723",
+            storage = {
+               ["consul.lua"] = "9e53d1f291f2518fcbaa4a92d508e6f3",
+               ["etcd.lua"] = "7284f69831a458744a13486d48d9258a",
+               ["file.lua"] = "8c8d4404af82bc2bd80ffe22ebda2be2",
+               ["redis.lua"] = "1b4af4f8364959ae83d80201dac0f0dd",
+               ["shm.lua"] = "47e6584935da584a0d4bf7c4f7ffbe7a",
+               ["vault.lua"] = "c2b0866fc9df22247984aa603f0d9343"
+            },
+            ["util.lua"] = "0e71cd1322eb0264d925079638950825"
+         }
+      }
+   },
+   ["lua-resty-acme-0.7.2-1.rockspec"] = "dc3332dbc070fca319672691b3b46418"
+}

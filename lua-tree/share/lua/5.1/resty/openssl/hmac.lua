@@ -4,10 +4,12 @@ local ffi_gc = ffi.gc
 local ffi_str = ffi.string
 
 require "resty.openssl.include.hmac"
+require "resty.openssl.include.evp.md"
 local ctypes = require "resty.openssl.auxiliary.ctypes"
 local format_error = require("resty.openssl.err").format_error
 local OPENSSL_10 = require("resty.openssl.version").OPENSSL_10
 local OPENSSL_11_OR_LATER = require("resty.openssl.version").OPENSSL_11_OR_LATER
+local OPENSSL_30 = require("resty.openssl.version").OPENSSL_30
 
 local _M = {}
 local mt = {__index = _M}
@@ -31,20 +33,20 @@ function _M.new(key, typ)
     return nil, "hmac.new: failed to create HMAC_CTX"
   end
 
-  local dtyp = C.EVP_get_digestbyname(typ or 'sha1')
-  if dtyp == nil then
+  local algo = C.EVP_get_digestbyname(typ or 'sha1')
+  if algo == nil then
     return nil, string.format("hmac.new: invalid digest type \"%s\"", typ)
   end
 
-  local code = C.HMAC_Init_ex(ctx, key, #key, dtyp, nil)
+  local code = C.HMAC_Init_ex(ctx, key, #key, algo, nil)
   if code ~= 1 then
     return nil, format_error("hmac.new")
   end
 
   return setmetatable({
     ctx = ctx,
-    dtyp = dtyp,
-    buf = ctypes.uchar_array(C.EVP_MD_size(dtyp)),
+    algo = algo,
+    buf = ctypes.uchar_array(OPENSSL_30 and C.EVP_MD_get_size(algo) or C.EVP_MD_size(algo)),
   }, mt), nil
 end
 

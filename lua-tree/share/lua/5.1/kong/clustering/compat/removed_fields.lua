@@ -50,6 +50,16 @@ return {
     },
     request_termination = {
       "echo",
+      "trigger",
     },
-  }
+  },
+
+  -- Any dataplane older than 2.7.0
+  [2006999999] = {
+    rate_limiting = {
+      "redis_ssl",
+      "redis_ssl_verify",
+      "redis_server_name",
+    },
+  },
 }

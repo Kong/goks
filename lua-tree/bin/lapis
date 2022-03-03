@@ -1,3 +1,3 @@
 #!/bin/sh
 
-LUAROCKS_SYSCONFDIR='/usr/local/etc/luarocks' exec '/usr/local/openresty/luajit/bin/luajit' -e 'package.path="/home/hbagdi/goks/lua-tree/share/lua/5.1/?.lua;/home/hbagdi/goks/lua-tree/share/lua/5.1/?/init.lua;"..package.path;package.cpath="/home/hbagdi/goks/lua-tree/lib/lua/5.1/?.so;"..package.cpath;local k,l,_=pcall(require,"luarocks.loader") _=k and l.add_context("kong-lapis","1.8.3.1-1")' '/home/hbagdi/goks/lua-tree/lib/luarocks/rocks-5.1/kong-lapis/1.8.3.1-1/bin/lapis' "$@"
+LUAROCKS_SYSCONFDIR='/usr/local/etc/luarocks' exec '/usr/local/openresty/luajit/bin/luajit' -e 'package.path="/goks/lua-tree/share/lua/5.1/?.lua;/goks/lua-tree/share/lua/5.1/?/init.lua;"..package.path;package.cpath="/goks/lua-tree/lib/lua/5.1/?.so;"..package.cpath;local k,l,_=pcall(require,"luarocks.loader") _=k and l.add_context("kong-lapis","1.8.3.1-1")' '/goks/lua-tree/lib/luarocks/rocks-5.1/kong-lapis/1.8.3.1-1/bin/lapis' "$@"

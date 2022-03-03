@@ -10,7 +10,7 @@ local fmt = string.format
 local rand_bytes = utils.get_rand_bytes
 
 local ZipkinLogHandler = {
-  VERSION = "1.4.1",
+  VERSION = "1.5.0",
   -- We want to run first so that timestamps taken are at start of the phase
   -- also so that other plugins might be able to use our structures
   PRIORITY = 100000,
@@ -38,7 +38,8 @@ end
 local function get_reporter(conf)
   if reporter_cache[conf] == nil then
     reporter_cache[conf] = new_zipkin_reporter(conf.http_endpoint,
-                                               conf.default_service_name)
+                                               conf.default_service_name,
+                                               conf.local_service_name)
   end
   return reporter_cache[conf]
 end
@@ -114,7 +115,8 @@ if subsystem == "http" then
     local req_headers = req.get_headers()
 
     local header_type, trace_id, span_id, parent_id, should_sample, baggage =
-      tracing_headers.parse(req_headers)
+      tracing_headers.parse(req_headers, conf.header_type)
+
     local method = req.get_method()
 
     if should_sample == nil then
@@ -135,12 +137,19 @@ if subsystem == "http" then
       parent_id,
       baggage)
 
+    local http_version = req.get_http_version()
+    local protocol = http_version and 'HTTP/'..http_version or nil
+
     request_span.ip = kong.client.get_forwarded_ip()
     request_span.port = kong.client.get_forwarded_port()
 
     request_span:set_tag("lc", "kong")
     request_span:set_tag("http.method", method)
+    request_span:set_tag("http.host", req.get_host())
     request_span:set_tag("http.path", req.get_path())
+    if protocol then
+      request_span:set_tag("http.protocol", protocol)
+    end
 
     local static_tags = conf.static_tags
     if type(static_tags) == "table" then

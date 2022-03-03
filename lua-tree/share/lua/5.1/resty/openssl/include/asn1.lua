@@ -2,6 +2,7 @@ local ffi = require "ffi"
 local C = ffi.C
 
 require "resty.openssl.include.ossl_typ"
+local OPENSSL_30 = require("resty.openssl.version").OPENSSL_30
 
 ffi.cdef [[
   typedef struct ASN1_VALUE_st ASN1_VALUE;
@@ -27,7 +28,7 @@ ffi.cdef [[
   int ASN1_STRING_print(BIO *bp, const ASN1_STRING *v);
 ]]
 
-local function declare_asn1_functions(typ)
+local function declare_asn1_functions(typ, has_ex)
   local t = {}
   for i=1, 7 do
     t[i] = typ
@@ -37,8 +38,13 @@ local function declare_asn1_functions(typ)
     %s *%s_new(void);
     void %s_free(%s *a);
     %s *%s_dup(%s *a);
-  ]], unpack(t))
-  )
+  ]], unpack(t)))
+
+  if OPENSSL_30 and has_ex then
+    ffi.cdef(string.format([[
+      %s *%s_new_ex(OSSL_LIB_CTX *libctx, const char *propq);
+    ]], typ, typ))
+  end
 end
 
 declare_asn1_functions("ASN1_INTEGER")
@@ -48,6 +54,7 @@ declare_asn1_functions("ASN1_ENUMERATED")
 
 local OPENSSL_10 = require("resty.openssl.version").OPENSSL_10
 local OPENSSL_11_OR_LATER = require("resty.openssl.version").OPENSSL_11_OR_LATER
+local BORINGSSL_110 = require("resty.openssl.version").BORINGSSL_110
 
 local ASN1_STRING_get0_data
 if OPENSSL_11_OR_LATER then
@@ -67,7 +74,19 @@ elseif OPENSSL_10 then
   ASN1_STRING_get0_data = C.ASN1_STRING_data
 end
 
+if BORINGSSL_110 then
+  ffi.cdef [[
+    // required by resty/openssl/include/x509/crl.lua
+    typedef struct ASN1_ENCODING_st {
+      unsigned char *enc;         /* DER encoding */
+      long len;                   /* Length of encoding */
+      int modified;               /* set to 1 if 'enc' is invalid */
+    } ASN1_ENCODING;
+  ]]
+end
+
 return {
   ASN1_STRING_get0_data = ASN1_STRING_get0_data,
   declare_asn1_functions = declare_asn1_functions,
+  has_new_ex = true,
 }

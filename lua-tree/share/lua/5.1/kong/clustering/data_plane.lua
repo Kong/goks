@@ -35,7 +35,7 @@ local ngx_DEBUG = ngx.DEBUG
 local ngx_INFO = ngx.INFO
 local ngx_WARN = ngx.WARN
 local ngx_NOTICE = ngx.NOTICE
-local MAX_PAYLOAD = constants.CLUSTERING_MAX_PAYLOAD
+local MAX_PAYLOAD = kong.configuration.cluster_max_payload
 local WS_OPTS = {
   timeout = constants.CLUSTERING_TIMEOUT,
   max_payload_len = MAX_PAYLOAD,
@@ -43,6 +43,7 @@ local WS_OPTS = {
 local PING_INTERVAL = constants.CLUSTERING_PING_INTERVAL
 local PING_WAIT = PING_INTERVAL * 1.5
 local _log_prefix = "[clustering] "
+local DECLARATIVE_EMPTY_CONFIG_HASH = constants.DECLARATIVE_EMPTY_CONFIG_HASH
 
 
 local function is_timeout(err)
@@ -63,6 +64,16 @@ function _M.new(parent)
 end
 
 
+function _M:encode_config(config)
+  return deflate_gzip(config)
+end
+
+
+function _M:decode_config(config)
+  return inflate_gzip(config)
+end
+
+
 function _M:update_config(config_table, config_hash, update_cache)
   assert(type(config_table) == "table")
 
@@ -78,7 +89,7 @@ function _M:update_config(config_table, config_hash, update_cache)
 
   if declarative.get_current_hash() == new_hash then
     ngx_log(ngx_DEBUG, _log_prefix, "same config received from control plane, ",
-                   "no need to reload")
+                                    "no need to reload")
     return true
   end
 
@@ -94,12 +105,14 @@ function _M:update_config(config_table, config_hash, update_cache)
     -- local persistence only after load finishes without error
     local f, err = io_open(CONFIG_CACHE, "w")
     if not f then
-      ngx_log(ngx_ERR, _log_prefix, "unable to open cache file: ", err)
+      ngx_log(ngx_ERR, _log_prefix, "unable to open config cache file: ", err)
 
     else
-      res, err = f:write(assert(deflate_gzip(cjson_encode(config_table))))
+      local config = assert(cjson_encode(config_table))
+      config = assert(self:encode_config(config))
+      res, err = f:write(config)
       if not res then
-        ngx_log(ngx_ERR, _log_prefix, "unable to write cache file: ", err)
+        ngx_log(ngx_ERR, _log_prefix, "unable to write config cache file: ", err)
       end
 
       f:close()
@@ -124,33 +137,35 @@ function _M:init_worker()
       f:close()
 
       if config and #config > 0 then
-        ngx_log(ngx_INFO, _log_prefix, "found cached copy of data-plane config, loading..")
-
-        local err
-
-        config, err = inflate_gzip(config)
+        ngx_log(ngx_INFO, _log_prefix, "found cached config, loading...")
+        config, err = self:decode_config(config)
         if config then
-          config = cjson_decode(config)
-
+          config, err = cjson_decode(config)
           if config then
             local res
             res, err = self:update_config(config)
             if not res then
               ngx_log(ngx_ERR, _log_prefix, "unable to update running config from cache: ", err)
             end
+
+          else
+            ngx_log(ngx_ERR, _log_prefix, "unable to json decode cached config: ", err, ", ignoring")
           end
 
         else
-          ngx_log(ngx_ERR, _log_prefix, "unable to inflate cached config: ", err, ", ignoring...")
+          ngx_log(ngx_ERR, _log_prefix, "unable to decode cached config: ", err, ", ignoring")
         end
       end
 
     else
       -- CONFIG_CACHE does not exist, pre create one with 0600 permission
-      local fd = ffi.C.open(CONFIG_CACHE, bit.bor(system_constants.O_RDONLY(),
-                                                  system_constants.O_CREAT()),
-                                          bit.bor(system_constants.S_IRUSR(),
-                                                  system_constants.S_IWUSR()))
+      local flags = bit.bor(system_constants.O_RDONLY(),
+                            system_constants.O_CREAT())
+
+      local mode = ffi.new("int", bit.bor(system_constants.S_IRUSR(),
+                                          system_constants.S_IWUSR()))
+
+      local fd = ffi.C.open(CONFIG_CACHE, flags, mode)
       if fd == -1 then
         ngx_log(ngx_ERR, _log_prefix, "unable to pre-create cached config file: ",
                 ffi.string(ffi.C.strerror(ffi.errno())))
@@ -173,7 +188,7 @@ local function send_ping(c, log_suffix)
   local hash = declarative.get_current_hash()
 
   if hash == true then
-    hash = string.rep("0", 32)
+    hash = DECLARATIVE_EMPTY_CONFIG_HASH
   end
 
   local _, err = c:send_ping(hash)

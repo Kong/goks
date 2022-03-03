@@ -1,17 +1,5 @@
 local typedefs = require "kong.db.schema.typedefs"
 
-local function keyring_enabled()
-  local ok, enabled = pcall(function()
-    return kong.configuration.keyring_enabled
-  end)
-
-  return ok and enabled or nil
-end
-
--- symmetrically encrypt IAM access keys, if configured. this is available
--- in Kong Enterprise: https://docs.konghq.com/enterprise/1.3-x/db-encryption/
-local ENCRYPTED = keyring_enabled()
-
 return {
   name = "aws-lambda",
   fields = {
@@ -31,11 +19,13 @@ return {
         } },
         { aws_key = {
           type = "string",
-          encrypted = ENCRYPTED,
+          encrypted = true, -- Kong Enterprise-exclusive feature, does nothing in Kong CE
+          referenceable = true,
         } },
         { aws_secret = {
           type = "string",
-          encrypted = ENCRYPTED,
+          encrypted = true, -- Kong Enterprise-exclusive feature, does nothing in Kong CE
+          referenceable = true,
         } },
         { aws_region = typedefs.host },
         { function_name = {
@@ -87,6 +77,7 @@ return {
           type = "boolean",
           default = false,
         } },
+        -- TODO: remove proxy_scheme in Kong 3.0
         { proxy_scheme = {
           type = "string",
           one_of = { "http", "https" }
@@ -105,7 +96,23 @@ return {
   } },
   entity_checks = {
     { mutually_required = { "config.aws_key", "config.aws_secret" } },
-    { mutually_required = { "config.proxy_scheme", "config.proxy_url" } },
     { mutually_exclusive = { "config.aws_region", "config.host" } },
+    { custom_entity_check = {
+        field_sources = { "config.proxy_url" },
+        fn = function(entity)
+          local proxy_url = entity.config and entity.config.proxy_url
+
+          if type(proxy_url) == "string" then
+            local scheme = proxy_url:match("^([^:]+)://")
+
+            if scheme and scheme ~= "http" then
+              return nil, "proxy_url scheme must be http"
+            end
+          end
+
+          return true
+        end,
+      }
+    },
   }
 }

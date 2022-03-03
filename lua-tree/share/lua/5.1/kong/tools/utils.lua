@@ -4,7 +4,7 @@
 -- NOTE: Before implementing a function here, consider if it will be used in many places
 -- across Kong. If not, a local function in the appropriate module is preferred.
 --
--- @copyright Copyright 2016-2021 Kong Inc. All rights reserved.
+-- @copyright Copyright 2016-2022 Kong Inc. All rights reserved.
 -- @license [Apache 2.0](https://opensource.org/licenses/Apache-2.0)
 -- @module kong.tools.utils
 
@@ -28,9 +28,12 @@ local gsub          = string.gsub
 local split         = pl_stringx.split
 local re_find       = require "go.re2".find
 local re_match      = require "go.re2".match
+local get_phase     = ngx.get_phase
+local ngx_sleep     = ngx.sleep
 local stringio_open = pl_stringio.open
 
 local _M = {}
+local YIELD_ITERATIONS = 500
 
 --- splits a string.
 -- just a placeholder to the penlight `pl.stringx.split` function
@@ -82,7 +85,6 @@ do
     return _system_infos
   end
 end
-
 
 local get_rand_bytes = require "go.rand".get_rand_bytes
 _M.get_rand_bytes = get_rand_bytes
@@ -569,7 +571,9 @@ end
 -- @return success A boolean indicating wether the module was found.
 -- @return module The retrieved module, or the error in case of a failure
 function _M.load_module_if_exists(module_name)
-  local status, res = xpcall(function() return require(module_name) end, debug.traceback)
+  local status, res = xpcall(function()
+    return require(module_name)
+  end, debug.traceback)
   if status then
     return true, res
   -- Here we match any character because if a module has a dash '-' in its name, we would need to escape it.
@@ -1218,5 +1222,25 @@ local topological_sort do
   end
 end
 _M.topological_sort = topological_sort
+
+
+do
+  local counter = 0
+  function _M.yield(in_loop, phase)
+    phase = phase or get_phase()
+    if phase == "init" or phase == "init_worker"  then
+      return
+    end
+    if in_loop then
+      counter = counter + 1
+      if counter % YIELD_ITERATIONS ~= 0 then
+        return
+      end
+      counter = 0
+    end
+    ngx_sleep(0)
+  end
+end
+
 
 return _M

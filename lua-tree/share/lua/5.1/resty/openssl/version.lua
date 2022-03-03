@@ -57,7 +57,8 @@ end
 
 
 if not ok then
-  error(string.format("OpenSSL has encountered an error: %s", tostring(version_num)))
+  error(string.format("OpenSSL has encountered an error: %s; is OpenSSL library loaded?",
+        tostring(version_num)))
 elseif type(version_num) == 'number' and version_num < 0x10000000 then
   error(string.format("OpenSSL version %s is not supported", tostring(version_num or 0)))
 elseif not version_num then
@@ -109,6 +110,7 @@ return setmetatable({
     OPENSSL_111_OR_LATER = version_num >= 0x10101000 and version_num < 0x30100000,
     OPENSSL_10 = version_num < 0x10100000 and version_num > 0x10000000,
     BORINGSSL = BORINGSSL,
+    BORINGSSL_110 = BORINGSSL and version_num >= 0x10100000 and version_num < 0x10101000
   }, {
     __index = types_table,
 })

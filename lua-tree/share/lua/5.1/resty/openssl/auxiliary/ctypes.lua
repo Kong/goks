@@ -19,6 +19,9 @@ return {
     ptr_of_uint = ffi.typeof("unsigned int[1]"),
     ptr_of_size_t = ffi.typeof("size_t[1]"),
     ptr_of_int = ffi.typeof("int[1]"),
+    null = ffi.new("void *"), -- hack wher ngx.null is not available
 
     uchar_array = ffi.typeof("unsigned char[?]"),
+
+    SIZE_MAX = math.pow(2, 64), -- nginx set _FILE_OFFSET_BITS to 64
 }

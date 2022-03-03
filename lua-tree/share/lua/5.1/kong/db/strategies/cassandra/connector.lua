@@ -36,7 +36,7 @@ function CassandraConnector.new(kong_config)
 
     package.loaded["socket"] = nil
     package.loaded["kong.tools.dns"] = nil
-    package.loaded["resty.dns.client"] = nil
+    package.loaded["kong.resty.dns.client"] = nil
     package.loaded["resty.dns.resolver"] = nil
 
     ngx.socket.tcp = function(...) -- luacheck: ignore
@@ -120,7 +120,7 @@ function CassandraConnector.new(kong_config)
     kong_config.dns_no_sync = dns_no_sync_old
 
     package.loaded["resty.dns.resolver"] = nil
-    package.loaded["resty.dns.client"] = nil
+    package.loaded["kong.resty.dns.client"] = nil
     package.loaded["kong.tools.dns"] = nil
     package.loaded["socket"] = nil
 
@@ -1052,6 +1052,7 @@ do
 
     local cql
     local args
+    local opts = { consistency = self.opts.write_consistency }
 
     if state == "executed" then
       cql = [[UPDATE schema_meta
@@ -1088,7 +1089,7 @@ do
     table.insert(args, SCHEMA_META_KEY)
     table.insert(args, subsystem)
 
-    local res, err = conn:execute(cql, args)
+    local res, err = conn:execute(cql, args, opts)
     if not res then
       return nil, err
     end

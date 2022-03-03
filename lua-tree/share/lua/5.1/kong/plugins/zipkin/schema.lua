@@ -46,6 +46,7 @@ return {
     { config = {
         type = "record",
         fields = {
+          { local_service_name = { type = "string", required = true, default = "kong" } },
           { http_endpoint = typedefs.url },
           { sample_ratio = { type = "number",
                              default = 0.001,
@@ -54,7 +55,7 @@ return {
           { include_credential = { type = "boolean", required = true, default = true } },
           { traceid_byte_count = { type = "integer", required = true, default = 16, one_of = { 8, 16 } } },
           { header_type = { type = "string", required = true, default = "preserve",
-                            one_of = { "preserve", "b3", "b3-single", "w3c", "jaeger", "ot" } } },
+                            one_of = { "preserve", "ignore", "b3", "b3-single", "w3c", "jaeger", "ot" } } },
           { default_header_type = { type = "string", required = true, default = "b3",
                                     one_of = { "b3", "b3-single", "w3c", "jaeger", "ot" } } },
           { tags_header = { type = "string", required = true, default = "Zipkin-Tags" } },

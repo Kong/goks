@@ -31,6 +31,7 @@ local ngx_log = ngx.log
 local tostring = tostring
 local ipairs = ipairs
 local cjson = require("cjson.safe").new()
+local table_insert = table.insert
 local table_remove = table.remove
 local worker_events = require("resty.worker.events")
 local resty_lock = require ("resty.lock")
@@ -41,6 +42,46 @@ local ngx_worker_id = ngx.worker.id
 local ngx_worker_pid = ngx.worker.pid
 local ssl = require("ngx.ssl")
 local resty_timer = require "resty.timer"
+
+local new_tab
+local nkeys
+local is_array
+
+do
+  local pcall = pcall
+  local ok
+
+  ok, new_tab = pcall(require, "table.new")
+  if not ok then
+    new_tab = function () return {} end
+  end
+
+  -- OpenResty branch of LuaJIT New API
+  ok, nkeys = pcall(require, "table.nkeys")
+  if not ok then
+    nkeys = function (tab)
+      local count = 0
+      for _, v in pairs(tab) do
+        if v ~= nil then
+          count = count + 1
+        end
+      end
+      return count
+    end
+  end
+
+  ok, is_array = pcall(require, "table.isarray")
+  if not ok then
+    is_array = function(t)
+      for k in pairs(t) do
+          if type(k) ~= "number" or math.floor(k) ~= k then
+            return false
+          end
+      end
+      return true
+    end
+  end
+end
 
 -- constants
 local EVENT_SOURCE_PREFIX = "lua-resty-healthcheck"
@@ -62,7 +103,6 @@ local CHECK_JITTER = CHECK_INTERVAL * 0.1
 -- the check interval. If it does not update the shm during this period, we
 -- consider that it is not able to continue checking (the worker probably was killed)
 local LOCK_PERIOD = CHECK_INTERVAL * 15
-
 
 -- Counters: a 32-bit shm integer can hold up to four 8-bit counters.
 local CTR_SUCCESS = 0x00000001
@@ -282,6 +322,7 @@ end
 function checker:add_target(ip, port, hostname, is_healthy, hostheader)
   ip = tostring(assert(ip, "no ip address provided"))
   port = assert(tonumber(port), "no port number provided")
+  hostname = hostname or ip
   if is_healthy == nil then
     is_healthy = true
   end
@@ -289,13 +330,21 @@ function checker:add_target(ip, port, hostname, is_healthy, hostheader)
   local internal_health = is_healthy and "healthy" or "unhealthy"
 
   local ok, err = locking_target_list(self, function(target_list)
+  local found = false
 
     -- check whether we already have this target
     for _, target in ipairs(target_list) do
-      if target.ip == ip and target.port == port and target.hostname == hostname then
-        self:log(DEBUG, "adding an existing target: ", hostname or "", " ", ip,
-                ":", port, " (ignoring)")
-        return false
+      if target.ip == ip and target.port == port and target.hostname == (hostname) then
+        if target.purge_time == nil then
+          self:log(DEBUG, "adding an existing target: ", hostname or "", " ", ip,
+                  ":", port, " (ignoring)")
+          return
+        end
+        target.purge_time = nil
+        found = true
+        internal_health = self:get_target_status(ip, port, hostname) and
+                          "healthy" or "unhealthy"
+        break
       end
     end
 
@@ -309,12 +358,14 @@ function checker:add_target(ip, port, hostname, is_healthy, hostheader)
     end
 
     -- target does not exist, go add it
-    target_list[#target_list + 1] = {
-      ip = ip,
-      port = port,
-      hostname = hostname,
-      hostheader = hostheader,
-    }
+    if not found then
+      target_list[#target_list + 1] = {
+        ip = ip,
+        port = port,
+        hostname = hostname,
+        hostheader = hostheader,
+      }
+    end
     target_list = serialize(target_list)
 
     ok, err = self.shm:set(self.TARGET_LIST, target_list)
@@ -428,6 +479,32 @@ function checker:clear()
 
     -- raise event for our removed target
     self:raise_event(self.events.clear)
+
+    return true
+  end)
+end
+
+
+--- Clear all healthcheck data after a period of time.
+-- Useful for keeping target status between configuration reloads.
+-- @param delay delay in seconds before purging target state.
+-- @return `true` on success, or `nil + error` on failure.
+function checker:delayed_clear(delay)
+  assert(tonumber(delay), "no delay provided")
+
+  return locking_target_list(self, function(target_list)
+    local purge_time = ngx_now() + delay
+
+    -- add purge time to all targets
+    for _, target in ipairs(target_list) do
+      target.purge_time = purge_time
+    end
+
+    target_list = serialize(target_list)
+    local ok, err = self.shm:set(self.TARGET_LIST, target_list)
+    if not ok then
+      return nil, "failed to store target_list in shm: " .. err
+    end
 
     return true
   end)
@@ -848,7 +925,7 @@ function checker:run_single_check(ip, port, hostname, hostheader)
   end
 
   if self.checks.active.type == "https" then
-    local session, err
+    local session
     if self.ssl_cert and self.ssl_key then
       session, err = sock:tlshandshake({
         verify = self.checks.active.https_verify_certificate,
@@ -867,8 +944,42 @@ function checker:run_single_check(ip, port, hostname, hostheader)
 
   end
 
+  local req_headers = self.checks.active.headers
+  local headers
+  if self.checks.active._headers_str then
+    headers = self.checks.active._headers_str
+  else
+    local headers_length = nkeys(req_headers)
+    if headers_length > 0 then
+      if is_array(req_headers) then
+        self:log(WARN, "array headers is deprecated")
+        headers = table.concat(req_headers, "\r\n")
+      else
+        headers = new_tab(0, headers_length)
+        local idx = 0
+        for key, values in pairs(req_headers) do
+            if type(values) == "table" then
+              for _, value in ipairs(values) do
+                idx = idx + 1
+                headers[idx] = key .. ": " .. tostring(value)
+              end
+            else
+              idx = idx + 1
+              headers[idx] = key .. ": " .. tostring(values)
+            end
+        end
+        headers = table.concat(headers, "\r\n")
+      end
+      if #headers > 0 then
+        headers = headers .. "\r\n"
+      end
+    end
+    self.checks.active._headers_str = headers or ""
+  end
+
   local path = self.checks.active.http_path
-  local request = ("GET %s HTTP/1.0\r\nHost: %s\r\n\r\n"):format(path, hostheader or hostname)
+  local request = ("GET %s HTTP/1.0\r\n%sHost: %s\r\n\r\n"):format(path, headers, hostheader or hostname or ip)
+  self:log(DEBUG, "request head: ", request)
 
   local bytes
   bytes, err = sock:send(request)
@@ -964,20 +1075,19 @@ end
 
 -- @return `true` on success, or false if the lock was not acquired, or `nil + error`
 -- in case of errors
-function checker:get_periodic_lock()
-  local key = self.PERIODIC_LOCK
+local function get_periodic_lock(shm, key)
   local my_pid = ngx_worker_pid()
-  local checker_pid = self.shm:get(key)
+  local checker_pid = shm:get(key)
 
   if checker_pid == nil then
     -- no worker is checking, try to acquire the lock
-    local ok, err = self.shm:add(key, my_pid, LOCK_PERIOD)
+    local ok, err = shm:add(key, my_pid, LOCK_PERIOD)
     if not ok then
       if err == "exists" then
         -- another worker got the lock before
         return false
       end
-      self:log(ERR, "failed to add key '", key, "': ", err)
+      ngx_log(ERR, "failed to add key '", key, "': ", err)
       return nil, err
     end
   elseif checker_pid ~= my_pid then
@@ -990,13 +1100,12 @@ end
 
 
 -- touch the shm to refresh the valid period
-function checker:renew_periodic_lock()
-  local key = self.PERIODIC_LOCK
+local function renew_periodic_lock(shm, key)
   local my_pid = ngx_worker_pid()
 
-  local _, err = self.shm:set(key, my_pid, LOCK_PERIOD)
+  local _, err = shm:set(key, my_pid, LOCK_PERIOD)
   if err then
-    self:log(ERR, "failed to update key '", key, "': ", err)
+    ngx_log(ERR, "failed to update key '", key, "': ", err)
   end
 end
 
@@ -1032,7 +1141,7 @@ local function checker_callback(self, health_mode)
   if not list_to_check[1] then
     self:log(DEBUG, "checking ", health_mode, " targets: nothing to do")
   else
-    local timer, err = resty_timer({
+    local timer = resty_timer({
       interval = 0,
       recurring = false,
       immediate = false,
@@ -1074,7 +1183,7 @@ function checker:event_handler(event_name, ip, port, hostname)
         end
       end
       self:log(DEBUG, "event: target '", hostname or "", " (", ip, ":", port,
-                      "' removed")
+                      ")' removed")
 
     else
       self:log(WARN, "event: trying to remove an unknown target '",
@@ -1088,10 +1197,10 @@ function checker:event_handler(event_name, ip, port, hostname)
          then
     if not target_found then
       -- it is a new target, must add it first
-      target_found = { ip = ip, port = port, hostname = hostname }
+      target_found = { ip = ip, port = port, hostname = hostname or ip }
       self.targets[target_found.ip] = self.targets[target_found.ip] or {}
       self.targets[target_found.ip][target_found.port] = self.targets[target_found.ip][target_found.port] or {}
-      self.targets[target_found.ip][target_found.port][target_found.hostname or ip] = target_found
+      self.targets[target_found.ip][target_found.port][target_found.hostname] = target_found
       self.targets[#self.targets + 1] = target_found
       self:log(DEBUG, "event: target added '", hostname or "", "(", ip, ":", port, ")'")
     end
@@ -1232,6 +1341,7 @@ local defaults = {
       concurrency = 10,
       http_path = "/",
       https_verify_certificate = true,
+      headers = {""},
       healthy = {
         interval = 0, -- 0 = disabled by default
         http_statuses = { 200, 302 },
@@ -1303,6 +1413,7 @@ end
 -- * `checks.active.concurrency`: number of targets to check concurrently
 -- * `checks.active.http_path`: path to use in `GET` HTTP request to run on active checks
 -- * `checks.active.https_verify_certificate`: boolean indicating whether to verify the HTTPS certificate
+-- * `checks.active.headers`: one or more lists of values indexed by header name
 -- * `checks.active.healthy.interval`: interval between checks for healthy targets (in seconds)
 -- * `checks.active.healthy.http_statuses`: which HTTP statuses to consider a success
 -- * `checks.active.healthy.successes`: number of successes to consider a target healthy
@@ -1454,57 +1565,78 @@ function _M.new(opts)
     return nil, err
   end
 
-  -- if active checker is needed and not running, start it
-  if (self.checks.active.healthy.active or self.checks.active.unhealthy.active)
-    and active_check_timer == nil then
+  -- if active checker is not running, start it
+  if active_check_timer == nil then
 
-    self:log(DEBUG, "starting timer to check active checks")
-    local err
-    local check_healthcheck_timer, err = resty_timer({
+    self:log(DEBUG, "worker ", ngx_worker_id(), " (pid: ", ngx_worker_pid(), ") ",
+      "starting active check timer")
+    local shm, key = self.shm, self.PERIODIC_LOCK
+    active_check_timer, err = resty_timer({
       recurring = true,
-      -- check if no worker is actively checking health status every 10 check
-      -- periods
-      interval = CHECK_INTERVAL * 10,
+      interval = CHECK_INTERVAL,
       jitter = CHECK_JITTER,
       detached = false,
       expire = function()
-        if self:get_periodic_lock() and not active_check_timer then
-          self:log(DEBUG, "worker ", ngx_worker_id(), " (pid: ", ngx_worker_pid(), ") ",
-                  "starting active check timer")
-          active_check_timer, err = resty_timer({
-            recurring = true,
-            interval = CHECK_INTERVAL,
-            detached = false,
-            expire = function()
-              self:renew_periodic_lock()
-              local cur_time = ngx_now()
-              for _, checker_obj in ipairs(hcs) do
-                if checker_obj.checks.active.healthy.active and
-                  (checker_obj.checks.active.healthy.last_run +
-                  checker_obj.checks.active.healthy.interval <= cur_time)
-                then
-                  checker_obj.checks.active.healthy.last_run = cur_time
-                  checker_callback(checker_obj, "healthy")
-                end
 
-                if checker_obj.checks.active.unhealthy.active and
-                  (checker_obj.checks.active.unhealthy.last_run +
-                  checker_obj.checks.active.unhealthy.interval <= cur_time)
-                then
-                  checker_obj.checks.active.unhealthy.last_run = cur_time
-                  checker_callback(checker_obj, "unhealthy")
-                end
+        if get_periodic_lock(shm, key) then
+          active_check_timer.interval = CHECK_INTERVAL
+          renew_periodic_lock(shm, key)
+        else
+          active_check_timer.interval = CHECK_INTERVAL * 10
+          return
+        end
+
+        local cur_time = ngx_now()
+        for _, checker_obj in ipairs(hcs) do
+          -- clear targets marked for delayed removal
+          locking_target_list(checker_obj, function(target_list)
+            local removed_targets = {}
+            local index = 1
+            while index <= #target_list do
+              local target = target_list[index]
+              if target.purge_time and target.purge_time <= cur_time then
+                table_insert(removed_targets, target)
+                table_remove(target_list, index)
+              else
+                index = index + 1
               end
-            end,
-          })
-          if not active_check_timer then
-            self:log(ERR, "Could not start active check timer: ", err)
+            end
+
+            if #removed_targets > 0 then
+              target_list = serialize(target_list)
+
+              local ok, err = shm:set(checker_obj.TARGET_LIST, target_list)
+              if not ok then
+                return nil, "failed to store target_list in shm: " .. err
+              end
+
+              for _, target in ipairs(removed_targets) do
+                clear_target_data_from_shm(checker_obj, target.ip, target.port, target.hostname)
+                checker_obj:raise_event(checker_obj.events.remove, target.ip, target.port, target.hostname)
+              end
+            end
+          end)
+
+          if checker_obj.checks.active.healthy.active and
+            (checker_obj.checks.active.healthy.last_run +
+              checker_obj.checks.active.healthy.interval <= cur_time)
+          then
+            checker_obj.checks.active.healthy.last_run = cur_time
+            checker_callback(checker_obj, "healthy")
+          end
+
+          if checker_obj.checks.active.unhealthy.active and
+            (checker_obj.checks.active.unhealthy.last_run +
+              checker_obj.checks.active.unhealthy.interval <= cur_time)
+          then
+            checker_obj.checks.active.unhealthy.last_run = cur_time
+            checker_callback(checker_obj, "unhealthy")
           end
         end
       end,
     })
-    if not check_healthcheck_timer then
-      self:log(ERR, "Could not check active checking: ", err)
+    if not active_check_timer then
+      self:log(ERR, "Could not start active check timer: ", err)
     end
   end
 

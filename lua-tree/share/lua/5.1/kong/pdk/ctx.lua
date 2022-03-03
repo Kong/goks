@@ -1,10 +1,11 @@
---- Current request context data
+--- Contextual data for the current request.
 --
 -- @module kong.ctx
+local base = require "resty.core.base"
 
 
+local setmetatable = setmetatable
 local ngx = ngx
-local ngx_get_phase = ngx.get_phase
 
 
 -- shared between all global instances
@@ -12,24 +13,20 @@ local _CTX_SHARED_KEY = {}
 local _CTX_CORE_KEY = {}
 
 
--- dynamic namespaces, also shared between global instances
-local _CTX_NAMESPACES_KEY = {}
-
-
 ---
--- A table that has the lifetime of the current request and is shared between
--- all plugins. It can be used to share data between several plugins in a given
--- request.
+-- A table that has the same lifetime as the current request. This table is shared 
+-- between all plugins. It can be used to share data between several plugins in a 
+-- given request.
 --
--- Since only relevant in the context of a request, this table cannot be
+-- This table is only relevant in the context of a request and cannot be
 -- accessed from the top-level chunk of Lua modules. Instead, it can only be
 -- accessed in request phases, which are represented by the `rewrite`,
 -- `access`, `header_filter`, `response`, `body_filter`, `log`, and `preread` phases of
 -- the plugin interfaces. Accessing this table in those functions (and their
 -- callees) is fine.
 --
--- Values inserted in this table by a plugin will be visible by all other
--- plugins.  One must use caution when interacting with its values, as a naming
+-- Values inserted in this table by a plugin are visible by all other
+-- plugins. Be careful when interacting with values in this table, as a naming
 -- conflict could result in the overwrite of data.
 --
 -- @table kong.ctx.shared
@@ -55,32 +52,34 @@ local _CTX_NAMESPACES_KEY = {}
 
 
 ---
--- A table that has the lifetime of the current request - Unlike
+-- A table that has the same lifetime as the current request. Unlike
 -- `kong.ctx.shared`, this table is **not** shared between plugins.
--- Instead, it is only visible for the current plugin _instance_.
--- That is, if several instances of the rate-limiting plugin
--- are configured (e.g. on different Services), each instance has its
--- own table, for every request.
+-- Instead, it is only visible for the current plugin instance.
+-- For example, if several instances of the Rate Limiting plugin
+-- are configured on different Services, each instance has its
+-- own table for every request.
 --
 -- Because of its namespaced nature, this table is safer for a plugin to use
 -- than `kong.ctx.shared` since it avoids potential naming conflicts, which
 -- could lead to several plugins unknowingly overwriting each other's data.
 --
--- Since only relevant in the context of a request, this table cannot be
+-- This table is only relevant in the context of a request and cannot be
 -- accessed from the top-level chunk of Lua modules. Instead, it can only be
 -- accessed in request phases, which are represented by the `rewrite`,
 -- `access`, `header_filter`, `body_filter`, `log`, and `preread` phases
 -- of the plugin interfaces. Accessing this table in those functions (and
 -- their callees) is fine.
 --
--- Values inserted in this table by a plugin will be visible in successful
--- phases of this plugin's instance only. For example, if a plugin wants to
--- save some value for post-processing during the `log` phase:
+-- Values inserted in this table by a plugin are visible in successful
+-- phases of this plugin's instance only.
 --
 -- @table kong.ctx.plugin
 -- @phases rewrite, access, header_filter, response, body_filter, log, preread
 -- @usage
 -- -- plugin handler.lua
+--
+-- -- For example, if a plugin wants to
+-- -- save some value for post-processing during the `log` phase:
 --
 -- function plugin_handler:access(conf)
 --   kong.ctx.plugin.val_1 = "hello"
@@ -94,53 +93,26 @@ local _CTX_NAMESPACES_KEY = {}
 -- end
 
 
-local function new(self)
+local function get_namespace(ctx, k)
+  if not ctx then
+    ctx = ngx.ctx
+  end
+
+  local namespaces = ctx.KONG_NAMESPACES
+  if not namespaces then
+    return
+  end
+
+  return namespaces[k]
+end
+
+
+local function new()
   local _CTX = {}
   local _ctx_mt = {}
-  local _ns_mt = { __mode = "v" }
 
-
-  local function get_namespaces(nctx)
-    local namespaces = nctx[_CTX_NAMESPACES_KEY]
-    if not namespaces then
-      -- 4 namespaces for request, i.e. ~4 plugins
-      namespaces = self.table.new(0, 4)
-      nctx[_CTX_NAMESPACES_KEY] = setmetatable(namespaces, _ns_mt)
-    end
-
-    return namespaces
-  end
-
-
-  local function set_namespace(namespace, namespace_key)
-    local nctx = ngx.ctx
-    local namespaces = get_namespaces(nctx)
-
-    local ns = namespaces[namespace]
-    if ns and ns == namespace_key then
-      return
-    end
-
-    namespaces[namespace] = namespace_key
-  end
-
-
-  local function del_namespace(namespace)
-    local nctx = ngx.ctx
-    local namespaces = get_namespaces(nctx)
-    namespaces[namespace] = nil
-  end
-
-
-  function _ctx_mt.__index(t, k)
-    if k == "__set_namespace" then
-      return set_namespace
-
-    elseif k == "__del_namespace" then
-      return del_namespace
-    end
-
-    if ngx_get_phase() == "init" then
+  function _ctx_mt.__index(_, k)
+    if not base.get_request() then
       return
     end
 
@@ -154,8 +126,7 @@ local function new(self)
       key = _CTX_SHARED_KEY
 
     else
-      local namespaces = get_namespaces(nctx)
-      key = namespaces[k]
+      key = get_namespace(nctx, k)
     end
 
     if key then
@@ -168,7 +139,6 @@ local function new(self)
       return ctx
     end
   end
-
 
   return setmetatable(_CTX, _ctx_mt)
 end

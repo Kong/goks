@@ -1,0 +1,20 @@
+rock_manifest = {
+   doc = {
+      LICENSE = "ca9071cb12d9902063c0f1152a0c5b0b",
+      ["README.md"] = "7f1ba77b2d7e83ee2f0a231bb80aff87"
+   },
+   lua = {
+      pgmoon = {
+         ["arrays.lua"] = "2117ad1d0deba7dba032dfa544d9ecd6",
+         ["bit.lua"] = "54281cd88c19dd076863109f03c5ce3b",
+         ["cqueues.lua"] = "c5a97b62ad28feac00bb908bb474e485",
+         ["crypto.lua"] = "aca56809337d86d9c4251b98038413c2",
+         ["hstore.lua"] = "f25e2f235761d01135b5e78921106471",
+         ["init.lua"] = "bc7d0de528e8af7260c121d7d4c74237",
+         ["json.lua"] = "6e7b81249033c1973f6bf4ea68de0284",
+         ["socket.lua"] = "5144720c91b6ceb6ea6865dff9fa6005",
+         ["util.lua"] = "9c0fbd9bd6c2a2fb58095cdd61fc2cec"
+      }
+   },
+   ["pgmoon-1.13.0-1.rockspec"] = "fe340c7c280f859e777a521d21ec881f"
+}

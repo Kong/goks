@@ -5,7 +5,7 @@ local openssl = require "resty.acme.openssl"
 local json = require "cjson"
 local ssl = require "ngx.ssl"
 
-local log = ngx.log
+local log = util.log
 local ngx_ERR = ngx.ERR
 local ngx_WARN = ngx.WARN
 local ngx_INFO = ngx.INFO
@@ -69,6 +69,7 @@ local domain_whitelist, domain_whitelist_callback
 local certs_cache = {}
 local CERTS_CACHE_TTL = 3600
 local CERTS_CACHE_NEG_TTL = 5
+local CERTS_LOCK_TTL = 300
 
 
 local update_cert_lock_key_prefix = "update_lock:"
@@ -198,6 +199,14 @@ local function update_cert_handler(data)
 
   log(ngx_INFO, "new ", typ, " cert for ", domain, " is saved")
 
+  local lock_key = update_cert_lock_key_prefix .. domain
+  local err = AUTOSSL.storage:delete(lock_key)
+  if err then
+    log(ngx.WARN,
+      "unable to delete lock key ", lock_key, ": ", err,
+      ", certs for other type may be blocked until lock expired")
+  end
+
 end
 
 -- locked wrapper for update_cert_handler
@@ -224,10 +233,10 @@ function AUTOSSL.update_cert(data)
   -- Let's encrypt tends to have a (undocumented?) behaviour that if
   -- you submit an order with different CSR while the previous order is still pending
   -- you will get the previous order (with `expires` capped to an integer second).
-  local lock_key = update_cert_lock_key_prefix .. ":" .. data.domain
-  local err = AUTOSSL.storage:add(lock_key, "1", CERTS_CACHE_NEG_TTL)
+  local lock_key = update_cert_lock_key_prefix .. data.domain
+  local err = AUTOSSL.storage:add(lock_key, "1", CERTS_LOCK_TTL)
   if err then
-    ngx.log(ngx.INFO,
+    log(ngx.INFO,
       "update is already running (lock key ", lock_key, " exists), current type ", data.type)
     return nil
   end
@@ -334,7 +343,7 @@ function AUTOSSL.init(autossl_config, acme_config)
   end
 
   if not domain_whitelist and not domain_whitelist_callback then
-    ngx.log(ngx.WARN, "neither domain_whitelist or domain_whitelist_callback is defined, this may cause",
+    log(ngx.WARN, "neither domain_whitelist or domain_whitelist_callback is defined, this may cause",
                       "security issues as all SNI will trigger a creation of certificate")
   end
 
