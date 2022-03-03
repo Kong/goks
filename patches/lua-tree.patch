@@ -32,11 +32,8 @@ schema/plugin_loader.lua:
 - do not use plugin_server since it is not applicable in our case
 
 
-schema/entity.lua:
-- rework goto statements
-
-
 schema/init.lua:
+- removing references to vault due to C lib usage
 - rework goto statements
 - Use an empty lua table for cjson.array_mt, this can potentially
   introduce serilialization errors
@@ -60,10 +57,6 @@ tools/utils.lua:
 - Use Lua 5.1 based xpcall
 - Use go.ipmatcher instead of resty.ipmatcher
 - Use go.re2 instead of ngx.re
-
-
-schema/metaschema.lua:
-- introduce encrypted field
 
 
 entities/plugins.lua:
@@ -156,66 +149,31 @@ index b1093a2..0afc200 100644
  
  
  local tostring = tostring
-diff --git a/lua-tree/share/lua/5.1/kong/db/schema/entity.lua b/lua-tree/share/lua/5.1/kong/db/schema/entity.lua
-index 0547aef..bf62e46 100644
---- a/lua-tree/share/lua/5.1/kong/db/schema/entity.lua
-+++ b/lua-tree/share/lua/5.1/kong/db/schema/entity.lua
-@@ -43,23 +43,21 @@ function Entity.new(definition)
-       return nil, entity_errors.NO_NILABLE:format(name)
-     end
- 
--    if field.abstract then
--      goto continue
--    end
-+    if not field.abstract then
- 
--    if field.type == "map" then
--      if field.keys.type ~= "string" then
--        return nil, entity_errors.MAP_KEY_STRINGS_ONLY:format(name)
--      end
-+      if field.type == "map" then
-+        if field.keys.type ~= "string" then
-+          return nil, entity_errors.MAP_KEY_STRINGS_ONLY:format(name)
-+        end
- 
--    elseif field.type == "record" then
--      make_records_required(field)
-+      elseif field.type == "record" then
-+        make_records_required(field)
- 
--    elseif field.type == "function" then
--      return nil, entity_errors.NO_FUNCTIONS:format(name)
--    end
-+      elseif field.type == "function" then
-+        return nil, entity_errors.NO_FUNCTIONS:format(name)
-+      end
- 
--    ::continue::
-+    end
-   end
- 
-   self.new_subschema = Entity.new_subschema
 diff --git a/lua-tree/share/lua/5.1/kong/db/schema/init.lua b/lua-tree/share/lua/5.1/kong/db/schema/init.lua
 index 734fbd5..0ddffad 100644
 --- a/lua-tree/share/lua/5.1/kong/db/schema/init.lua
 +++ b/lua-tree/share/lua/5.1/kong/db/schema/init.lua
-@@ -1,12 +1,12 @@
+@@ -1,16 +1,12 @@
  local tablex       = require "pl.tablex"
  local pretty       = require "pl.pretty"
  local utils        = require "kong.tools.utils"
 -local cjson        = require "cjson"
+-local vault        = require "kong.pdk.vault".new()
 +local cjson        = { array_mt = {} } --- TODO(hbagdi) XXX analyze the impact
 +local uuid         = require "go.uuid".generate
  
- 
+-
+-local is_reference = vault.is_reference
+-local dereference  = vault.get
  local setmetatable = setmetatable
+ local getmetatable = getmetatable
 -local re_match     = ngx.re.match
 -local re_find      = ngx.re.find
 +local re_match     = require "go.re2".match
+ local tostring     = tostring
  local concat       = table.concat
  local insert       = table.insert
- local format       = string.format
-@@ -315,7 +315,7 @@ Schema.validators = {
+@@ -326,7 +322,7 @@ Schema.validators = {
      if #value ~= 36 then
        return nil
      end
@@ -224,7 +182,18 @@ index 734fbd5..0ddffad 100644
    end,
  
    contains = function(array, wanted)
-@@ -1100,10 +1100,8 @@ validate_fields = function(self, input)
+@@ -965,10 +961,6 @@ function Schema:validate_field(field, value)
+       field.len_min = 1
+     end
+
+-    if field.referenceable and is_reference(value) then
+-      return true
+-    end
+-
+   elseif field.type == "function" then
+     if type(value) ~= "function" then
+       return nil, validation_errors.FUNCTION
+@@ -1125,10 +1117,8 @@ validate_fields = function(self, input)
        pok, err, errors[k] = pcall(self.validate_field, self, input, v)
        if not pok then
          errors[k] = validation_errors.SCHEMA_CANNOT_VALIDATE
@@ -235,8 +204,8 @@ index 734fbd5..0ddffad 100644
      else
        field, err = resolve_field(self, k, field, subschema)
        if field then
-@@ -1223,7 +1223,7 @@ local function run_entity_check(self, name, input, arg, full_check, errors)
- 
+@@ -1259,7 +1249,7 @@ local function run_entity_check(self, name, input, arg, full_check, errors)
+
    else
      local error_fmt = validation_errors[name:upper()]
 -    err = error_fmt and error_fmt:format(err) or err
@@ -244,114 +213,22 @@ index 734fbd5..0ddffad 100644
      if not err then
        local data = pretty.write({ name = arg }):gsub("%s+", " ")
        err = validation_errors.ENTITY_CHECK:format(name, data)
-@@ -2063,6 +2061,39 @@ local function allow_record_fields_by_name(record, loop)
- end
- 
- 
-+local function get_transform_args(input, original_input, output, transformation)
-+  local args = {}
-+  local argc = 0
-+  for _, input_field_name in ipairs(transformation.input) do
-+    local value = get_field(output or original_input or input, input_field_name)
-+    if is_nonempty(value) then
-+      argc = argc + 1
-+      if original_input then
-+        args[argc] = get_field(output or input, input_field_name)
-+      else
-+        args[argc] = value
-+      end
-+
-+    else
-+      return nil
-+    end
-+  end
-+
-+  if transformation.needs then
-+    for _, need in ipairs(transformation.needs) do
-+      local value = get_field(output or input, need)
-+      if is_nonempty(value) then
-+        argc = argc + 1
-+        args[argc] = get_field(output or input, need)
-+
-+      else
-+        return nil
-+      end
-+    end
-+  end
-+  return args
-+end
-+
- --- Run transformations on fields.
- -- @param input The input table.
- -- @param original_input The original input for transformation detection.
-@@ -2084,48 +2115,19 @@ function Schema:transform(input, original_input, context)
-       transform = transformation.on_write
-     end
- 
--    if not transform then
--      goto next
+@@ -1666,14 +1656,7 @@ function Schema:process_auto_fields(data, context, nulls, opts)
+   -- detected with ngx.ctx.KONG_PHASE, but to limit context
+   -- access we use nulls that admin api sets to true.
+   local kong = kong
+-  local resolve_references
+-  if is_select and not nulls then
+-    if kong and kong.configuration then
+-      resolve_references = kong.configuration.role ~= "control_plane"
+-    else
+-      resolve_references = true
 -    end
-+    if transform then
-+      local args = get_transform_args(input, original_input, output, transformation)
- 
--    local args = {}
--    local argc = 0
--    for _, input_field_name in ipairs(transformation.input) do
--      local value = get_field(output or original_input or input, input_field_name)
--      if is_nonempty(value) then
--        argc = argc + 1
--        if original_input then
--          args[argc] = get_field(output or input, input_field_name)
--        else
--          args[argc] = value
-+      if args then
-+        local data, err = transform(unpack(args))
-+        if err then
-+          return nil, validation_errors.TRANSFORMATION_ERROR:format(err)
-         end
- 
--      else
--        goto next
-+        output = self:merge_values(data, output or input)
-       end
-     end
- 
--    if transformation.needs then
--      for _, need in ipairs(transformation.needs) do
--        local value = get_field(output or input, need)
--        if is_nonempty(value) then
--          argc = argc + 1
--          args[argc] = get_field(output or input, need)
--
--        else
--          goto next
--        end
--      end
--    end
--
--    local data, err = transform(unpack(args))
--    if err then
--      return nil, validation_errors.TRANSFORMATION_ERROR:format(err)
--    end
--
--    output = self:merge_values(data, output or input)
--
--    ::next::
-   end
- 
-   return output or input
-diff --git a/lua-tree/share/lua/5.1/kong/db/schema/metaschema.lua b/lua-tree/share/lua/5.1/kong/db/schema/metaschema.lua
-index 6abb1fc..6ac43d1 100644
---- a/lua-tree/share/lua/5.1/kong/db/schema/metaschema.lua
-+++ b/lua-tree/share/lua/5.1/kong/db/schema/metaschema.lua
-@@ -71,6 +71,7 @@ local field_schema = {
-   { legacy = { type = "boolean" }, },
-   { immutable = { type = "boolean" }, },
-   { err = { type = "string" } },
-+  { encrypted = { type = "boolean" }, },
- }
- 
- for _, field in ipairs(validators) do
+-  end
++  local resolve_references = false
+
+   for key, field in self:each_field(data) do
+     local ftype = field.type
 diff --git a/lua-tree/share/lua/5.1/kong/db/schema/plugin_loader.lua b/lua-tree/share/lua/5.1/kong/db/schema/plugin_loader.lua
 index abcab8c..96e6d3d 100644
 --- a/lua-tree/share/lua/5.1/kong/db/schema/plugin_loader.lua
@@ -364,20 +241,19 @@ index abcab8c..96e6d3d 100644
  local Entity = require "kong.db.schema.entity"
  local utils = require "kong.tools.utils"
 -local plugin_servers = require "kong.runloop.plugin_servers"
- 
- 
- local plugin_loader = {}
-@@ -183,10 +182,6 @@ end
+ local utils_toposort = utils.topological_sort
+
+
+@@ -232,9 +231,6 @@ end
  function plugin_loader.load_subschema(parent_schema, plugin, errors)
    local plugin_schema = "kong.plugins." .. plugin .. ".schema"
    local ok, schema = utils.load_module_if_exists(plugin_schema)
 -  if not ok then
 -    ok, schema = plugin_servers.load_schema(plugin)
 -  end
--
+
    if not ok then
      return nil, "no configuration schema found for plugin: " .. plugin
-   end
 diff --git a/lua-tree/share/lua/5.1/kong/db/schema/typedefs.lua b/lua-tree/share/lua/5.1/kong/db/schema/typedefs.lua
 index c1a150a..3d6c639 100644
 --- a/lua-tree/share/lua/5.1/kong/db/schema/typedefs.lua
@@ -443,16 +319,18 @@ index 301d8d4..a1d6bbc 100644
  local type          = type
  local pairs         = pairs
  local ipairs        = ipairs
-@@ -33,32 +26,10 @@ local fmt           = string.format
+@@ -33,34 +26,12 @@ local fmt           = string.format
  local find          = string.find
  local gsub          = string.gsub
  local split         = pl_stringx.split
 -local re_find       = ngx.re.find
 -local re_match      = ngx.re.match
--local inflate_gzip  = zlib.inflateGzip
--local deflate_gzip  = zlib.deflateGzip
 +local re_find       = require "go.re2".find
 +local re_match      = require "go.re2".match
+ local get_phase     = ngx.get_phase
+ local ngx_sleep     = ngx.sleep
+-local inflate_gzip  = zlib.inflateGzip
+-local deflate_gzip  = zlib.deflateGzip
  local stringio_open = pl_stringio.open
  
 -ffi.cdef[[
@@ -468,7 +346,7 @@ index 301d8d4..a1d6bbc 100644
 -
 -const char *ERR_reason_error_string(unsigned long e);
 -
--int open(const char * filename, int flags, int mode);
+-int open(const char * filename, int flags, ...);
 -size_t read(int fd, void *buf, size_t count);
 -int write(int fd, const void *ptr, int numbytes);
 -int close(int fd);
@@ -476,9 +354,9 @@ index 301d8d4..a1d6bbc 100644
 -]]
 -
  local _M = {}
- 
- --- splits a string.
-@@ -112,111 +83,14 @@ do
+ local YIELD_ITERATIONS = 500
+
+@@ -115,111 +86,13 @@ do
    end
  end
  
@@ -543,7 +421,7 @@ index 301d8d4..a1d6bbc 100644
 -
 -    return true
 -  end
- 
+-
 -  -- try to get n_bytes of CSPRNG data, first via /dev/urandom,
 -  -- and then falling back to OpenSSL if necessary
 -  get_rand_bytes = function(n_bytes, urandom)
@@ -593,7 +471,7 @@ index 301d8d4..a1d6bbc 100644
  
  --- Generates a random unique string
  -- @return string  The random string (a chunk of base64ish-encoded random bytes)
-@@ -249,7 +123,7 @@ function _M.is_valid_uuid(str)
+@@ -252,7 +125,7 @@ function _M.is_valid_uuid(str)
    if type(str) ~= 'string' or #str ~= 36 then
      return false
    end
@@ -602,7 +480,7 @@ index 301d8d4..a1d6bbc 100644
  end
  
  -- function below is more acurate, but invalidates previously accepted uuids and hence causes
-@@ -260,7 +134,7 @@ end
+@@ -263,7 +136,7 @@ end
  --end
  
  do
@@ -611,25 +489,16 @@ index 301d8d4..a1d6bbc 100644
  
    --- URL escape and format key and value
    -- values should be already decoded or the `raw` option should be passed to prevent double-encoding
-@@ -695,7 +569,7 @@ end
- -- @return success A boolean indicating wether the module was found.
- -- @return module The retrieved module, or the error in case of a failure
- function _M.load_module_if_exists(module_name)
--  local status, res = xpcall(require, debug.traceback, module_name)
-+  local status, res = xpcall(function() return require(module_name) end, debug.traceback)
-   if status then
-     return true, res
-   -- Here we match any character because if a module has a dash '-' in its name, we would need to escape it.
-@@ -731,7 +605,7 @@ end
- 
- 
+@@ -736,7 +609,7 @@ end
+
+
  do
 -  local ipmatcher =  require "resty.ipmatcher"
 +  local ipmatcher =  require "go.ipmatcher"
    local sub = string.sub
  
    local ipv4_prefixes = {}
-@@ -1021,7 +895,7 @@ _M.validate_header_name = function(name)
+@@ -1026,7 +899,7 @@ _M.validate_header_name = function(name)
      return nil, "no header name provided"
    end
  
@@ -638,7 +507,7 @@ index 301d8d4..a1d6bbc 100644
      return name
    end
  
-@@ -1039,7 +913,7 @@ _M.validate_cookie_name = function(name)
+@@ -1044,7 +917,7 @@ _M.validate_cookie_name = function(name)
      return nil, "no cookie name provided"
    end
  
@@ -646,8 +515,8 @@ index 301d8d4..a1d6bbc 100644
 +  if re_match(name, "^[a-zA-Z0-9-_]+$") then
      return name
    end
- 
-@@ -1172,82 +1046,6 @@ function _M.bytes_to_str(bytes, unit, scale)
+
+@@ -1177,82 +1050,6 @@ function _M.bytes_to_str(bytes, unit, scale)
  end
  
  
@@ -738,17 +607,17 @@ index 0000000..96ad36d
 @@ -0,0 +1,349 @@
 +-- LuaSocket 3.0 license
 +-- Copyright © 2004-2013 Diego Nehab
-+-- 
++--
 +-- Permission is hereby granted, free of charge, to any person obtaining a
 +-- copy of this software and associated documentation files (the "Software"),
 +-- to deal in the Software without restriction, including without limitation
 +-- the rights to use, copy, modify, merge, publish, distribute, sublicense,
 +-- and/or sell copies of the Software, and to permit persons to whom the
 +-- Software is furnished to do so, subject to the following conditions:
-+-- 
++--
 +-- The above copyright notice and this permission notice shall be included in
 +-- all copies or substantial portions of the Software.
-+-- 
++--
 +-- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 +-- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 +-- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -934,9 +803,9 @@ index 0000000..96ad36d
 +        function(u) parsed.userinfo = u; return "" end)
 +    authority = string.gsub(authority, ":([^:%]]*)$",
 +        function(p) parsed.port = p; return "" end)
-+    if authority ~= "" then 
++    if authority ~= "" then
 +        -- IPv6?
-+        parsed.host = string.match(authority, "^%[(.+)%]$") or authority 
++        parsed.host = string.match(authority, "^%[(.+)%]$") or authority
 +    end
 +    local userinfo = parsed.userinfo
 +    if not userinfo then return parsed end
@@ -1019,7 +888,7 @@ index 0000000..96ad36d
 +                        relative_parsed.query = base_parsed.query
 +                    end
 +                end
-+            else    
++            else
 +                relative_parsed.path = absolute_path(base_parsed.path or "",
 +                    relative_parsed.path)
 +            end
