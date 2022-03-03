@@ -95,6 +95,24 @@ func TestValidator_Validate(t *testing.T) {
 	pluginName, err = v.LoadSchema(string(schema))
 	assert.EqualValues(t, "rate-limiting", pluginName)
 	assert.Nil(t, err)
+	schema, err = ioutil.ReadFile("testdata/aws-lambda.lua")
+	assert.Nil(t, err)
+	pluginName, err = v.LoadSchema(string(schema))
+	assert.EqualValues(t, "aws-lambda", pluginName)
+	assert.Nil(t, err)
+	t.Run("errors out when custom_entity_check fails", func(t *testing.T) {
+		plugin := `{
+                     "name": "aws-lambda",
+                     "config": {
+			 "proxy_url": "https://my-proxy-server:3128"
+		     },
+                     "enabled": true,
+                     "protocols": ["http"]
+                   }`
+		err := v.Validate(plugin)
+		assert.Equal(t, `{"@entity":["proxy_url scheme must be http"]}`,
+			err.Error())
+	})
 	t.Run("validates a uuid correctly", func(t *testing.T) {
 		plugin := `{
                      "name": "test",
