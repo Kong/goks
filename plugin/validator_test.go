@@ -170,6 +170,80 @@ func TestValidator_Validate(t *testing.T) {
 `
 		assert.JSONEq(t, expected, err.Error())
 	})
+	t.Run("tag validation succeeds with '-' in name", func(t *testing.T) {
+		plugin := `{
+      "name": "key-auth",
+      "enabled": true,
+      "protocols": [ "http"],
+      "tags": [
+        "i-have-hyphen",
+        "idonthaveahyphen",
+        "another-one-with-a-hyphen"
+      ]
+    }`
+		err := v.Validate(plugin)
+		assert.Nil(t, err)
+	})
+	t.Run("tag validation fails with ',' in name", func(t *testing.T) {
+		plugin := `{
+      "name": "key-auth",
+      "enabled": true,
+      "protocols": [ "http"],
+      "tags": [
+        "comma,fail"
+      ]
+    }`
+		expectedErr := `{
+			"tags": [
+				"invalid tag 'comma,fail': expected printable ascii (except ` +
+			"`,` and `/`" + `) or valid utf-8 sequences"
+			]
+		}`
+		err := v.Validate(plugin)
+		assert.NotNil(t, err)
+		assert.JSONEq(t, expectedErr, err.Error())
+	})
+	t.Run("tag validation fails with '/' in name", func(t *testing.T) {
+		plugin := `{
+      "name": "key-auth",
+      "enabled": true,
+      "protocols": [ "http"],
+      "tags": [
+        "forward/fail"
+      ]
+    }`
+		expectedErr := `{
+			"tags": [
+				"invalid tag 'forward/fail': expected printable ascii (except ` +
+			"`,` and `/`" + `) or valid utf-8 sequences"
+			]
+		}`
+		err := v.Validate(plugin)
+		assert.NotNil(t, err)
+		assert.JSONEq(t, expectedErr, err.Error())
+	})
+	t.Run("tag validation fails with multiple errors", func(t *testing.T) {
+		plugin := `{
+      "name": "key-auth",
+      "enabled": true,
+      "protocols": [ "http"],
+      "tags": [
+        "comma,fail",
+        "forward/fail"
+      ]
+    }`
+		expectedErr := `{
+			"tags": [
+				"invalid tag 'comma,fail': expected printable ascii (except ` +
+			"`,` and `/`" + `) or valid utf-8 sequences",
+				"invalid tag 'forward/fail': expected printable ascii (except ` +
+			"`,` and `/`" + `) or valid utf-8 sequences"
+			]
+		}`
+		err := v.Validate(plugin)
+		assert.NotNil(t, err)
+		assert.JSONEq(t, expectedErr, err.Error())
+	})
 
 	v, err = NewValidator(ValidatorOpts{InjectFS: &pluginTesting.LuaTree})
 	assert.Nil(t, err)

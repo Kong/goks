@@ -7,7 +7,7 @@ local constants = require "kong.constants"
 
 
 local pairs = pairs
-local match = string.match
+local match = require "go.re2".match
 local gsub = string.gsub
 local null = ngx.null
 local type = type
@@ -116,7 +116,7 @@ local function validate_tag(tag)
 
   -- printable ASCII (33-126 except ','(44) and '/'(47),
   -- plus non-ASCII utf8 (128-244)
-  if not match(tag, "^[\033-\043\045\046\048-\126\128-\244]+$") then
+  if not match(tag, "^[\\x21-\\x2B\\x2D\\x2E\\x30-\\x7E\\x80-\\xF4]+$") then
     return nil,
     "invalid tag '" .. tag ..
       "': expected printable ascii (except `,` and `/`) or valid utf-8 sequences"
