@@ -40,7 +40,9 @@ _G["validate"] = function(plugin)
   if err then
     return nil, err
   end
-  local ok, err = Plugins:validate(tbl)
+  local plugin_to_insert = Plugins:process_auto_fields(tbl, "insert")
+
+  local ok, err = Plugins:validate(plugin_to_insert)
   if not ok then
     return nil, json.encode(err)
   end

@@ -95,6 +95,11 @@ func TestValidator_Validate(t *testing.T) {
 	pluginName, err = v.LoadSchema(string(schema))
 	assert.EqualValues(t, "rate-limiting", pluginName)
 	assert.Nil(t, err)
+	schema, err = ioutil.ReadFile("testdata/acl.lua")
+	assert.Nil(t, err)
+	pluginName, err = v.LoadSchema(string(schema))
+	assert.EqualValues(t, "acl", pluginName)
+	assert.Nil(t, err)
 	t.Run("validates a uuid correctly", func(t *testing.T) {
 		plugin := `{
                      "name": "test",
@@ -242,6 +247,56 @@ func TestValidator_Validate(t *testing.T) {
 		}`
 		err := v.Validate(plugin)
 		assert.NotNil(t, err)
+		assert.JSONEq(t, expectedErr, err.Error())
+	})
+	t.Run("only_one_of entity check passes", func(t *testing.T) {
+		plugin := `{
+      "name": "acl",
+      "enabled": true,
+      "protocols": [ "http"],
+			"config": {
+				"allow": [
+					"foo"
+				]
+			}
+    }`
+		err := v.Validate(plugin)
+		assert.Nil(t, err)
+
+		plugin = `{
+      "name": "acl",
+      "enabled": true,
+      "protocols": [ "http"],
+			"config": {
+				"deny": [
+					"foo"
+				]
+			}
+    }`
+		err = v.Validate(plugin)
+		assert.Nil(t, err)
+	})
+	t.Run("only_one_of entity check fails", func(t *testing.T) {
+		plugin := `{
+      "name": "acl",
+      "enabled": true,
+      "protocols": [ "http"],
+			"config": {
+				"allow": [
+					"foo"
+				],
+				"deny": [
+					"bar"
+				]
+			}
+    }`
+		err := v.Validate(plugin)
+		assert.NotNil(t, err)
+		expectedErr := `{
+			"@entity": [
+				"exactly one of these fields must be non-empty: 'config.allow', 'config.deny'"
+			]
+		}`
 		assert.JSONEq(t, expectedErr, err.Error())
 	})
 
