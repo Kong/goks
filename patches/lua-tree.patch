@@ -33,7 +33,7 @@ schema/plugin_loader.lua:
 
 
 schema/init.lua:
-- removing references to vault due to C lib usage
+- removing references to vault due to C lib usage (e.g. referenceable objects)
 - rework goto statements
 - Use an empty lua table for cjson.array_mt, this can potentially
   introduce serilialization errors
@@ -206,6 +206,20 @@ index 734fbd5..0ddffad 100644
      else
        field, err = resolve_field(self, k, field, subschema)
        if field then
+        print("check_name (condition) = " .. require("inspect")(check_name))
+@@ -1200,12 +1200,6 @@ local function run_entity_check(self, name, input, arg, full_check, errors)
+       end
+     else
+       all_nil = false
+-
+-      -- Don't run if any of the values is a reference in a referenceable field
+-      local field = get_schema_field(self, fname)
+-      if field.type == "string" and field.referenceable and is_reference(value) then
+-        return
+-      end
+     end
+     if errors[fname] then
+       all_ok = false
 @@ -1259,7 +1249,7 @@ local function run_entity_check(self, name, input, arg, full_check, errors)
 
    else
