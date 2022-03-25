@@ -162,14 +162,10 @@ func TestValidator_Validate(t *testing.T) {
   "@entity": [
     "at least one of these fields must be non-empty: 'config.second', ` +
 			`'config.minute', 'config.hour', 'config.day', 'config.month', 'config.year'",
-    "failed conditional validation given value of field 'config.policy'",
-    "failed conditional validation given value of field 'config.policy'",
     "failed conditional validation given value of field 'config.policy'"
   ],
   "config": {
-    "redis_host": "required field missing",
-    "redis_port": "required field missing",
-    "redis_timeout": "required field missing"
+    "redis_host": "required field missing"
   }
 }
 `
