@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"strings"
 	"testing"
@@ -381,6 +382,122 @@ func TestValidator_ValidateWithCustomEntityCheck(t *testing.T) {
 		}`
 		require.JSONEq(t, expected, err.Error())
 	})
+}
+
+func TestValidator_ValidateBetweenEntityCheck(t *testing.T) {
+	v, err := NewValidator(ValidatorOpts{})
+	assert.Nil(t, err)
+	schema, err := ioutil.ReadFile("testdata/between.lua")
+	assert.Nil(t, err)
+	pluginName, err := v.LoadSchema(string(schema))
+	assert.Nil(t, err)
+	assert.EqualValues(t, "between", pluginName)
+
+	tests := []struct {
+		name        string
+		values      string
+		wantErr     bool
+		expectedErr string
+	}{
+		{
+			name:    "valid single value",
+			values:  "[100]",
+			wantErr: false,
+		},
+		{
+			name:    "valid multiple values",
+			values:  "[100, 200]",
+			wantErr: false,
+		},
+		{
+			name:        "invalid value fails - lower bound",
+			values:      "[99]",
+			wantErr:     true,
+			expectedErr: `{"config":{"values":["value should be between 100 and 599"]}}`,
+		},
+		{
+			name:        "invalid value fails - upper bound",
+			values:      "[600]",
+			wantErr:     true,
+			expectedErr: `{"config":{"values":["value should be between 100 and 599"]}}`,
+		},
+		{
+			name:        "mix valid and invalid values fails - lower bound",
+			values:      "[99, 100]",
+			wantErr:     true,
+			expectedErr: `{"config":{"values":["value should be between 100 and 599"]}}`,
+		},
+		{
+			name:    "fails with two invalid values",
+			values:  "[99, 600]",
+			wantErr: true,
+			expectedErr: `{"config":{"values":[
+				"value should be between 100 and 599",
+				"value should be between 100 and 599"
+			]}}`,
+		},
+		{
+			name:    "fails with three invalid values",
+			values:  "[99, 600, 700]",
+			wantErr: true,
+			expectedErr: `{"config":{"values":[
+				"value should be between 100 and 599",
+				"value should be between 100 and 599",
+				"value should be between 100 and 599"
+			]}}`,
+		},
+		{
+			name:    "three valid values",
+			values:  "[100, 200, 300]",
+			wantErr: false,
+		},
+		// The following tests handle the sparse array error message encoding
+		{
+			name:        "mix valid and invalid value fails = upper bound",
+			values:      "[100, 600]",
+			wantErr:     true,
+			expectedErr: `{"config":{"values":["[2] = value should be between 100 and 599"]}}`,
+		},
+		{
+			name:    "fails with mix of valid and invalid values - all from sparse array",
+			values:  "[100, 200, 300, 600, 500, 700]",
+			wantErr: true,
+			expectedErr: `{"config":{"values":[
+				"[4] = value should be between 100 and 599",
+				"[6] = value should be between 100 and 599"
+			]}}`,
+		},
+		{
+			name:    "fails with mix of valid and invalid values - indexed and sparse",
+			values:  "[99, 200, 601, 600, 500, 300]",
+			wantErr: true,
+			expectedErr: `{"config":{"values":[
+				"value should be between 100 and 599",
+				"[3] = value should be between 100 and 599",
+				"[4] = value should be between 100 and 599"
+			]}}`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			plugin := `{
+				"name": "between",
+				"enabled": true,
+				"protocols": ["http"],
+				"config": {
+					"values": %s
+				}
+			}`
+			err := v.Validate(fmt.Sprintf(plugin, test.values))
+			if test.wantErr {
+				assert.NotNil(t, err)
+				require.JSONEq(t, test.expectedErr, err.Error())
+			} else {
+				assert.Nil(t, err)
+			}
+		})
+	}
 }
 
 func TestValidator_ProcessAutoFields(t *testing.T) {
