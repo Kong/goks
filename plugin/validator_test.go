@@ -101,6 +101,11 @@ func TestValidator_Validate(t *testing.T) {
 	pluginName, err = v.LoadSchema(string(schema))
 	assert.EqualValues(t, "acl", pluginName)
 	assert.Nil(t, err)
+	schema, err = ioutil.ReadFile("testdata/udp-log.lua")
+	assert.Nil(t, err)
+	pluginName, err = v.LoadSchema(string(schema))
+	assert.EqualValues(t, "udp-log", pluginName)
+	assert.Nil(t, err)
 	t.Run("validates a uuid correctly", func(t *testing.T) {
 		plugin := `{
                      "name": "test",
@@ -263,7 +268,7 @@ func TestValidator_Validate(t *testing.T) {
 		plugin = `{
       "name": "acl",
       "enabled": true,
-      "protocols": [ "http"],
+      "protocols": [ "http" ],
 			"config": {
 				"deny": [
 					"foo"
@@ -295,6 +300,50 @@ func TestValidator_Validate(t *testing.T) {
 			]
 		}`
 		assert.JSONEq(t, expectedErr, err.Error())
+	})
+	t.Run("ensure all stream subsystem protocols can be assigned", func(t *testing.T) {
+		protocols := []string{
+			"tcp",
+			"tls",
+			"udp",
+		}
+		pluginFormat := `{
+      "name": "udp-log",
+      "enabled": true,
+      "protocols": [ "%s" ],
+			"config": {
+				"host": "example.com",
+				"port": 443
+			}
+    }`
+
+		for _, protocol := range protocols {
+			err := v.Validate(fmt.Sprintf(pluginFormat, protocol))
+			assert.Nil(t, err)
+		}
+	})
+	t.Run("ensure all http subsystem protocols can be assigned", func(t *testing.T) {
+		protocols := []string{
+			"http",
+			"https",
+			"grpc",
+			"grpcs",
+		}
+		pluginFormat := `{
+      "name": "acl",
+      "enabled": true,
+      "protocols": [ "%s" ],
+			"config": {
+				"allow": [
+					"foo"
+				]
+			}
+    }`
+
+		for _, protocol := range protocols {
+			err := v.Validate(fmt.Sprintf(pluginFormat, protocol))
+			assert.Nil(t, err)
+		}
 	})
 
 	v, err = NewValidator(ValidatorOpts{InjectFS: &pluginTesting.LuaTree})
