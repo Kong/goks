@@ -78,6 +78,217 @@ func TestValidator_LoadSchema(t *testing.T) {
 	})
 }
 
+func TestValidator_ValidatePathGood(t *testing.T) {
+	v, err := NewValidator(ValidatorOpts{})
+	assert.Nil(t, err)
+	schema, err := ioutil.ReadFile("testdata/path-test.lua")
+	assert.Nil(t, err)
+	pluginName, err := v.LoadSchema(string(schema))
+	assert.EqualValues(t, "path-test", pluginName)
+	assert.Nil(t, err)
+
+	plugin := `{
+	  "name": "path-test",
+	  "config": {
+		"path": "%s"
+	  },
+	  "enabled": true,
+	  "protocols": ["http"]
+	}`
+
+	goodPaths := []string{
+		"/",
+		"/path",
+		"/path/200",
+		"/path/200/",
+		"/path/200/test",
+		"/path/200/test/",
+		"/path/200/test-_~:@!$&'()*+,:=/",
+		"/hello/path$with$!&'()*+,;=stuff",
+	}
+	for _, path := range goodPaths {
+		err := v.Validate(fmt.Sprintf(plugin, path))
+		assert.Nil(t, err)
+	}
+}
+
+func TestValidator_ValidatePathBad(t *testing.T) {
+	v, err := NewValidator(ValidatorOpts{})
+	assert.Nil(t, err)
+	schema, err := ioutil.ReadFile("testdata/path-test.lua")
+	assert.Nil(t, err)
+	pluginName, err := v.LoadSchema(string(schema))
+	assert.EqualValues(t, "path-test", pluginName)
+	assert.Nil(t, err)
+
+	plugin := `{
+		"name": "path-test",
+		"config": {
+		  "path": "%s"
+		},
+		"enabled": true,
+		"protocols": ["http"]
+	}`
+
+	badPaths := []struct {
+		name        string
+		path        string
+		expectedErr string
+	}{
+		{
+			name: "errors out on empty path",
+			path: "",
+			expectedErr: `{
+				"config": {
+					"path": "length must be at least 1"
+				}
+			}`,
+		},
+		{
+			name: "errors out on path not starting with /",
+			path: "path",
+			expectedErr: `{
+				"config": {
+					"path": "should start with: /"
+				}
+			}`,
+		},
+		{
+			name: "errors out on path not starting with /",
+			path: "path/200",
+			expectedErr: `{
+				"config": {
+					"path": "should start with: /"
+				}
+			}`,
+		},
+		{
+			name: "errors out on path containing not allowed elements",
+			path: "/path/200?",
+			expectedErr: `{
+				"config": {
+					"path": "invalid path: '/path/200?' (characters outside of the reserved list of RFC 3986 found)"
+				}
+			}`,
+		},
+		{
+			name: "errors out on path containing not allowed elements",
+			path: "/path/200#",
+			expectedErr: `{
+				"config": {
+					"path": "invalid path: '/path/200#' (characters outside of the reserved list of RFC 3986 found)"
+				}
+			}`,
+		},
+		{
+			name: "errors out on path containing not allowed elements",
+			path: "/foo//bar",
+			expectedErr: `{
+				"config": {
+					"path": "must not have empty segments"
+				}
+			}`,
+		},
+		{
+			name: "errors out on path containing not allowed elements",
+			path: "/foo/bar//",
+			expectedErr: `{
+				"config": {
+					"path": "must not have empty segments"
+				}
+			}`,
+		},
+		{
+			name: "errors out on path containing not allowed elements",
+			path: "//foo/bar",
+			expectedErr: `{
+				"config": {
+					"path": "must not have empty segments"
+				}
+			}`,
+		},
+		{
+			name: "errors out on path containing not allowed elements",
+			path: "[[/users/|foo/profile]]",
+			expectedErr: `{
+				"config": {
+					"path": "should start with: /"
+				}
+			}`,
+		},
+		{
+			name: "errors out on path containing not allowed elements",
+			path: "[[/users/(this|foo/profile)]]",
+			expectedErr: `{
+				"config": {
+					"path": "should start with: /"
+				}
+			}`,
+		},
+		{
+			name: "errors out on path containing not allowed elements",
+			path: "/some%2words",
+			expectedErr: `{
+				"config": {
+					"path": "invalid url-encoded value: '%2w'"
+				}
+			}`,
+		},
+		{
+			name: "errors out on path containing not allowed elements",
+			path: "/some%0Xwords",
+			expectedErr: `{
+				"config": {
+					"path": "invalid url-encoded value: '%0X'"
+				}
+			}`,
+		},
+		{
+			name: "errors out on path containing not allowed elements",
+			path: "/some%2Gwords",
+			expectedErr: `{
+				"config": {
+					"path": "invalid url-encoded value: '%2G'"
+				}
+			}`,
+		},
+		{
+			name: "errors out on path containing not allowed elements",
+			path: "/some%20words%",
+			expectedErr: `{
+				"config": {
+					"path": "invalid url-encoded value: '%'"
+				}
+			}`,
+		},
+		{
+			name: "errors out on path containing not allowed elements",
+			path: "/some%20words%a",
+			expectedErr: `{
+				"config": {
+					"path": "invalid url-encoded value: '%a'"
+				}
+			}`,
+		},
+		{
+			name: "errors out on path containing not allowed elements",
+			path: "/some%20words%ax",
+			expectedErr: `{
+				"config": {
+					"path": "invalid url-encoded value: '%ax'"
+				}
+			}`,
+		},
+	}
+	for _, path := range badPaths {
+		t.Run(path.name, func(t *testing.T) {
+			err := v.Validate(fmt.Sprintf(plugin, path.path))
+			assert.NotNil(t, err)
+			require.JSONEq(t, path.expectedErr, err.Error())
+		})
+	}
+}
+
 func TestValidator_Validate(t *testing.T) {
 	v, err := NewValidator(ValidatorOpts{})
 	assert.Nil(t, err)
@@ -758,7 +969,8 @@ func getErrForField(e error, path string) string {
 			return ""
 		}
 		if i+1 == len(elements) {
-			return v.(string)
+			val, _ := v.(string)
+			return val
 		}
 
 		errMap, ok = v.(map[string]interface{})
