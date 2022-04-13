@@ -49,6 +49,7 @@ schema/typedefs.lua:
 - disable openssl
 - use go.re2::match instead of string.match
 - fix tag validation; switch from decimal ASCII code to hex
+- fix validate_path regex due to go.re2::match
 
 
 tools/utils.lua:
@@ -152,7 +153,7 @@ index b1093a2..0afc200 100644
  
  local tostring = tostring
 diff --git a/lua-tree/share/lua/5.1/kong/db/schema/init.lua b/lua-tree/share/lua/5.1/kong/db/schema/init.lua
-index 734fbd5..0ddffad 100644
+index 625bb0c63..956a09ec9 100644
 --- a/lua-tree/share/lua/5.1/kong/db/schema/init.lua
 +++ b/lua-tree/share/lua/5.1/kong/db/schema/init.lua
 @@ -1,16 +1,12 @@
@@ -207,7 +208,7 @@ index 734fbd5..0ddffad 100644
        field, err = resolve_field(self, k, field, subschema)
        if field then
         print("check_name (condition) = " .. require("inspect")(check_name))
-@@ -1200,12 +1200,6 @@ local function run_entity_check(self, name, input, arg, full_check, errors)
+@@ -1210,12 +1207,6 @@ local function run_entity_check(self, name, input, arg, full_check, errors)
        end
      else
        all_nil = false
@@ -220,7 +221,7 @@ index 734fbd5..0ddffad 100644
      end
      if errors[fname] then
        all_ok = false
-@@ -1259,7 +1249,7 @@ local function run_entity_check(self, name, input, arg, full_check, errors)
+@@ -1259,7 +1243,7 @@ local function run_entity_check(self, name, input, arg, full_check, errors)
 
    else
      local error_fmt = validation_errors[name:upper()]
@@ -229,7 +230,7 @@ index 734fbd5..0ddffad 100644
      if not err then
        local data = pretty.write({ name = arg }):gsub("%s+", " ")
        err = validation_errors.ENTITY_CHECK:format(name, data)
-@@ -1666,14 +1656,7 @@ function Schema:process_auto_fields(data, context, nulls, opts)
+@@ -1666,14 +1650,7 @@ function Schema:process_auto_fields(data, context, nulls, opts)
    -- detected with ngx.ctx.KONG_PHASE, but to limit context
    -- access we use nulls that admin api sets to true.
    local kong = kong
@@ -292,6 +293,17 @@ index c1a150a..3d6c639 100644
  local gsub = string.gsub
  local null = ngx.null
  local type = type
+@@ -63,8 +61,8 @@ end
+
+
+ local function validate_path(path)
+-  if not match(path, "^/[%w%.%-%_%~%/%%%:%@" ..
+-                     "%!%$%&%'%(%)%*%+%,%;%=" .. -- RFC 3986 "sub-delims"
++  if not match(path, "^/[A-Za-z0-9.\\-_~/%%:@" ..
++                     "!$&'\\(\\)\\*\\+,;=" .. -- RFC 3986 "sub-delims"
+                      "]*$")
+   then
+     return nil,
 @@ -118,7 +116,7 @@ local function validate_tag(tag)
  
    -- printable ASCII (33-126 except ','(44) and '/'(47),
