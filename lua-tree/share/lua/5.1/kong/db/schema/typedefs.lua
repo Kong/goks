@@ -61,8 +61,8 @@ end
 
 
 local function validate_path(path)
-  if not match(path, "^/[%w%.%-%_%~%/%%%:%@" ..
-                     "%!%$%&%'%(%)%*%+%,%;%=" .. -- RFC 3986 "sub-delims"
+  if not match(path, "^/[A-Za-z0-9.\\-_~/%%:@" ..
+                     "!$&'\\(\\)\\*\\+,;=" .. -- RFC 3986 "sub-delims"
                      "]*$")
   then
     return nil,

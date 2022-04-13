@@ -119,7 +119,7 @@ rock_manifest = {
          ["xml.lua"] = "e209abc0901ccb3ba79e0ca75e21a3eb"
       }
    },
-   ["penlight-1.12.0-1.rockspec"] = "315a1748119cfecb80ffaee11bbe815b",
+   ["penlight-1.12.0-2.rockspec"] = "fea1a9a02021b4189f7a63d28c5b0214",
    tests = {
       lua = {
          ["animal.lua"] = "dd7d26ff152e316d53d3fd47c8e19708",

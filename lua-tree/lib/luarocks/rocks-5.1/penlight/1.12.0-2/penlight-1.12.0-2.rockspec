@@ -1,6 +1,6 @@
 local package_name = "penlight"
 local package_version = "1.12.0"
-local rockspec_revision = "1"
+local rockspec_revision = "2"
 local github_account_name = "lunarmodules"
 local github_repo_name = package_name
 local git_checkout = package_version == "dev" and "master" or package_version
@@ -10,7 +10,7 @@ package = package_name
 version = package_version .. "-" .. rockspec_revision
 
 source = {
-  url = "git://github.com/"..github_account_name.."/"..github_repo_name..".git",
+  url = "git+https://github.com/"..github_account_name.."/"..github_repo_name..".git",
   branch = git_checkout
 }
 
