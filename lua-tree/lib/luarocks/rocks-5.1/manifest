@@ -839,7 +839,7 @@ dependencies = {
       }
    },
    penlight = {
-      ["1.12.0-1"] = {
+      ["1.12.0-2"] = {
          {
             constraints = {},
             name = "luafilesystem"
@@ -2392,121 +2392,121 @@ modules = {
       "pgmoon/1.13.0-1"
    },
    ["pl.Date"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.List"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.Map"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.MultiMap"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.OrderedMap"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.Set"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.app"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.array2d"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.class"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.compat"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.comprehension"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.config"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.data"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.dir"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.file"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.func"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.import_into"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.init"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.input"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.lapp"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.lexer"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.luabalanced"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.operator"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.path"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.permute"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.pretty"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.seq"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.sip"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.strict"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.stringio"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.stringx"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.tablex"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.template"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.test"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.text"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.types"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.url"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.utils"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    ["pl.xml"] = {
-      "penlight/1.12.0-1"
+      "penlight/1.12.0-2"
    },
    protoc = {
       "lua-protobuf/0.3.3-1"
@@ -3049,7 +3049,7 @@ repository = {
                luaxxhash = "1.0.0-1",
                lyaml = "6.2.7-1",
                multipart = "0.5.9-1",
-               penlight = "1.12.0-1",
+               penlight = "1.12.0-2",
                pgmoon = "1.13.0-1",
                version = "1.0.1-2"
             },
@@ -3668,7 +3668,7 @@ repository = {
                ["lua-resty-timer"] = "1.1.0-1",
                ["lua-resty-worker-events"] = "1.0.0-1",
                luafilesystem = "1.8.0-1",
-               penlight = "1.12.0-1"
+               penlight = "1.12.0-2"
             },
             modules = {
                ["resty.healthcheck"] = "resty/healthcheck.lua"
@@ -4051,7 +4051,7 @@ repository = {
       }
    },
    penlight = {
-      ["1.12.0-1"] = {
+      ["1.12.0-2"] = {
          {
             arch = "installed",
             commands = {},
