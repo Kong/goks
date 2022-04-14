@@ -2,6 +2,7 @@ package vm
 
 import (
 	"embed"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -104,7 +105,7 @@ func (v *VM) CallByParams(name string, args ...string) (string, error) {
 	if ret2 := l.Get(-1); ret2 != nil {
 		errString := lua.LVAsString(ret2)
 		if errString != "" {
-			resE = fmt.Errorf(errString)
+			resE = errors.New(errString)
 		}
 	}
 	l.Pop(argCount)
