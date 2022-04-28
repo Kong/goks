@@ -5,14 +5,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Setup go
-      uses: actions/setup-go@v2
+      uses: actions/setup-go@v3
       with:
         go-version: '^1.18'
     - name: Checkout repository
-      uses: actions/checkout@v2
-    - name: golangci-lint
-      uses: golangci/golangci-lint-action@v2
-      with:
-        version: v1.45
+      uses: actions/checkout@v3
+    - name: make install-tools
+      run: make install-tools
+    - name: make lint
+      run: make lint
     - name: make test
       run: make test
