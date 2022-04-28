@@ -8,7 +8,7 @@ gen-lua-tree:
 
 .PHONY: lint
 lint:
-	golangci-lint run ./...
+	./bin/golangci-lint run ./...
 
 .PHONY: all
 all: lint test
@@ -17,3 +17,6 @@ all: lint test
 test:
 	go test -race ./...
 
+.PHONY: install-tools
+install-tools:
+	./scripts/install-tools.sh
