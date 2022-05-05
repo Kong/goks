@@ -1,0 +1,42 @@
+local typedefs = require "kong.db.schema.typedefs"
+
+return {
+  name = "all-typedefs",
+  fields = {
+    { protocols = typedefs.protocols_http },
+    { config = {
+        type = "record",
+        fields = {
+          { http_method = typedefs.http_method },
+          { protocol = typedefs.protocol },
+          { host = typedefs.host },
+          { host_with_optional_port = typedefs.host_with_optional_port },
+          { wildcard_host = typedefs.wildcard_host },
+          { ip = typedefs.ip },
+          { ip_or_cidr = typedefs.ip_or_cidr },
+          { cidr_v4 = typedefs.cidr_v4 },
+          { port = typedefs.port },
+          { path = typedefs.path },
+          { url = typedefs.url },
+          { header_name = typedefs.header_name },
+          { timeout = typedefs.timeout },
+          { uuid = typedefs.uuid },
+          { auto_timestamp_s = typedefs.auto_timestamp_s },
+          { auto_timestamp_ms = typedefs.auto_timestamp_ms },
+          { name = typedefs.name },
+          { utf8_name = typedefs.utf8_name },
+          { sni = typedefs.sni },
+          { key = typedefs.key },
+          { tag = typedefs.tag({ required = false }) },
+          { tags = typedefs.tags },
+          { sources = typedefs.sources },
+          { destinations = typedefs.destinations },
+          { hosts = typedefs.hosts },
+          { paths = typedefs.paths },
+          { semantic_version = typedefs.semantic_version },
+          { lua_code = typedefs.lua_code },
+        },
+      },
+    },
+  },
+}
