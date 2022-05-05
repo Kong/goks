@@ -304,8 +304,17 @@ index c1a150a..3d6c639 100644
                       "]*$")
    then
      return nil,
-@@ -118,7 +116,7 @@ local function validate_tag(tag)
- 
+@@ -88,7 +87,7 @@ end
+
+
+ local function validate_name(name)
+-  if not match(name, "^[%w%.%-%_~]+$") then
++  if not match(name, "^[\\w\\.\\-\\_~]+$") then
+     return nil,
+     "invalid value '" .. name ..
+       "': it must only contain alphanumeric and '., -, _, ~' characters"
+@@ -118,7 +117,7 @@ local function validate_tag(tag)
+
    -- printable ASCII (33-126 except ','(44) and '/'(47),
    -- plus non-ASCII utf8 (128-244)
 -  if not match(tag, "^[\033-\043\045\046\048-\126\128-\244]+$") then
@@ -313,7 +322,16 @@ index c1a150a..3d6c639 100644
      return nil,
      "invalid tag '" .. tag ..
        "': expected printable ascii (except `,` and `/`) or valid utf-8 sequences"
-@@ -216,22 +214,12 @@ end
+@@ -135,7 +134,7 @@ local function validate_utf8_name(name)
+     return nil, err
+   end
+
+-  if not match(name, "^[%w%.%-%_~\128-\244]+$") then
++  if not match(name, "^[\\w\\.\\-\\_~\\x80-\\xF4]+$") then
+     return nil,
+     "invalid value '" .. name ..
+       "': the only accepted ascii characters are alphanumerics or ., -, _, and ~"
+@@ -216,22 +215,12 @@ end
  
  
  local function validate_certificate(cert)
