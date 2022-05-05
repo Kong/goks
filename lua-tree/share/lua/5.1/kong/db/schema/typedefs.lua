@@ -86,7 +86,7 @@ end
 
 
 local function validate_name(name)
-  if not match(name, "^[%w%.%-%_~]+$") then
+  if not match(name, "^[\\w\\.\\-\\_~]+$") then
     return nil,
     "invalid value '" .. name ..
       "': it must only contain alphanumeric and '., -, _, ~' characters"
@@ -133,7 +133,7 @@ local function validate_utf8_name(name)
     return nil, err
   end
 
-  if not match(name, "^[%w%.%-%_~\128-\244]+$") then
+  if not match(name, "^[\\w\\.\\-\\_~\\x80-\\xF4]+$") then
     return nil,
     "invalid value '" .. name ..
       "': the only accepted ascii characters are alphanumerics or ., -, _, and ~"
