@@ -956,6 +956,984 @@ func TestValidator_SchemaAsJSON(t *testing.T) {
 	})
 }
 
+func TestValidator_ValidateAllTypedefs(t *testing.T) {
+	v, err := NewValidator(ValidatorOpts{})
+	assert.Nil(t, err)
+	schema, err := ioutil.ReadFile("testdata/all-typedefs.lua")
+	assert.Nil(t, err)
+	pluginName, err := v.LoadSchema(string(schema))
+	assert.Nil(t, err)
+	assert.EqualValues(t, "all-typedefs", pluginName)
+
+	tests := []struct {
+		name        string
+		config      string
+		wantErr     bool
+		expectedErr string
+	}{
+		{
+			name: "valid http method",
+			config: `{
+				"http_method": "GET"
+			}`,
+		},
+		{
+			name: "invalid http method",
+			config: `{
+				"http_method": "get"
+			}`,
+			expectedErr: `{"config":{"http_method":"invalid value: get"}}`,
+			wantErr:     true,
+		},
+		{
+			name: "valid protocol",
+			config: `{
+				"protocol": "http"
+			}`,
+		},
+		{
+			name: "invalid protocol",
+			config: `{
+				"protocol": "httpp"
+			}`,
+			expectedErr: `{"config":{
+				"protocol":"expected one of: grpc, grpcs, http, https, tcp, tls, tls_passthrough, udp"
+				}}`,
+			wantErr: true,
+		},
+		{
+			name: "valid host as ipv4",
+			config: `{
+				"host": "192.0.2.1"
+			}`,
+		},
+		{
+			name: "invalid host as ipv4",
+			config: `{
+				"host": "192.0.2.1.1"
+			}`,
+			expectedErr: `{"config":{"host":"invalid value: 192.0.2.1.1"}}`,
+			wantErr:     true,
+		},
+		{
+			name: "invalid host as ipv4:port",
+			config: `{
+				"host": "192.0.2.1:80"
+			}`,
+			expectedErr: `{"config":{"host":"must not have a port"}}`,
+			wantErr:     true,
+		},
+		{
+			name: "valid host as ipv6",
+			config: `{
+				"host": "2001:db8::1"
+			}`,
+		},
+		{
+			name: "invalid host as ipv6",
+			config: `{
+				"host": "2001:db8::1::1"
+			}`,
+			expectedErr: `{"config":{"host":"invalid value: 2001:db8::1::1"}}`,
+			wantErr:     true,
+		},
+		{
+			name: "valid host_with_optional_port as domain",
+			config: `{
+				"host_with_optional_port": "foo.com"
+			}`,
+		},
+		{
+			name: "valid host_with_optional_port as domain:port",
+			config: `{
+				"host_with_optional_port": "foo.com:80"
+			}`,
+		},
+		{
+			name: "valid host_with_optional_port as ip",
+			config: `{
+				"host_with_optional_port": "192.0.2.1"
+			}`,
+		},
+		{
+			name: "valid host_with_optional_port as ip:port",
+			config: `{
+				"host_with_optional_port": "192.0.2.1:80"
+			}`,
+		},
+		{
+			name: "valid host_with_optional_port as ipv6",
+			config: `{
+				"host_with_optional_port": "2001:DB8::1"
+			}`,
+		},
+		{
+			name: "valid host_with_optional_port as ipv6:port",
+			config: `{
+				"host_with_optional_port": "[2001:DB8::1]:80"
+			}`,
+		},
+		{
+			name: "invalid ipv4 in host_with_optional_port",
+			config: `{
+				"host_with_optional_port": "192.0.2.1.1:80"
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"host_with_optional_port":"invalid ipv4 address: 192.0.2.1.1:80"}}`,
+		},
+		{
+			name: "invalid ipv6 in host_with_optional_port",
+			config: `{
+				"host_with_optional_port": "2001:DB8::1::1"
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"host_with_optional_port":"invalid ipv6 address: 2001:DB8::1::1"}}`,
+		},
+		{
+			name: "invalid port in host_with_optional_port",
+			config: `{
+				"host_with_optional_port": "[2001:DB8::1]:99999999"
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"host_with_optional_port":"invalid port number"}}`,
+		},
+		{
+			name: "invalid domain in host_with_optional_port",
+			config: `{
+				"host_with_optional_port": "foo!.com"
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"host_with_optional_port":"invalid hostname: foo!.com"}}`,
+		},
+		{
+			name: "valid wildcard_host",
+			config: `{
+				"wildcard_host": "*test.com"
+			}`,
+		},
+		{
+			name: "valid wildcard_host",
+			config: `{
+				"wildcard_host": "test.*"
+			}`,
+		},
+		{
+			name: "invalid wildcard_host with multiple *",
+			config: `{
+				"wildcard_host": "*test.*"
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"wildcard_host":"only one wildcard must be specified"}}`,
+		},
+		{
+			name: "invalid wildcard_host with * in the middle",
+			config: `{
+				"wildcard_host": "new*test"
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"wildcard_host":"wildcard must be leftmost or rightmost character"}}`,
+		},
+		{
+			name: "valid ipv4",
+			config: `{
+				"ip": "192.0.2.1"
+			}`,
+		},
+		{
+			name: "invalid ipv4",
+			config: `{
+				"ip": "192.0.2.1.1"
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"ip":"not an ip address: 192.0.2.1.1"}}`,
+		},
+		{
+			name: "valid ipv6",
+			config: `{
+				"ip": "2001:db8::1"
+			}`,
+		},
+		{
+			name: "valid ipv6",
+			config: `{
+				"ip": "::1"
+			}`,
+		},
+		{
+			name: "valid ipv6",
+			config: `{
+				"ip": "fe80::1"
+			}`,
+		},
+		{
+			name: "invalid ipv6",
+			config: `{
+				"ip": "2001:db8::1::1"
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"ip":"not an ip address: 2001:db8::1::1"}}`,
+		},
+		{
+			name: "valid ip_or_cidr",
+			config: `{
+				"ip_or_cidr": "192.0.2.0/24"
+			}`,
+		},
+		{
+			name: "invalid ip_or_cidr with too big mask",
+			config: `{
+				"ip_or_cidr": "192.0.2.0/244"
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"ip_or_cidr":"invalid ip or cidr range: '192.0.2.0/244'"}}`,
+		},
+		{
+			name: "valid cidr_v4",
+			config: `{
+				"cidr_v4": "192.0.2.0/24"
+			}`,
+		},
+		{
+			name: "invalid cidr_v4 with too big mask",
+			config: `{
+				"cidr_v4": "192.0.2.0/244"
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"cidr_v4":"invalid ipv4 cidr range: '192.0.2.0/244'"}}`,
+		},
+		{
+			name: "first valid port",
+			config: `{
+				"port": 0
+			}`,
+		},
+		{
+			name: "last valid port",
+			config: `{
+				"port": 65535
+			}`,
+		},
+		{
+			name: "valid port",
+			config: `{
+				"port": 80
+			}`,
+		},
+		{
+			name: "invalid port as string",
+			config: `{
+				"port": "80"
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"port":"expected an integer"}}`,
+		},
+		{
+			name: "invalid port as float",
+			config: `{
+				"port": 80.1
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"port":"expected an integer"}}`,
+		},
+		{
+			name: "invalid too big port",
+			config: `{
+				"port": 9999999999
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"port":"value should be between 0 and 65535"}}`,
+		},
+		{
+			name: "invalid negative port",
+			config: `{
+				"port": -1
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"port":"value should be between 0 and 65535"}}`,
+		},
+		{
+			name: "valid url",
+			config: `{
+				"url": "https://www.konghq.com"
+			}`,
+		},
+		{
+			name: "invalid url with relative path",
+			config: `{
+				"url": "/about/teams"
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"url":"missing host in url"}}`,
+		},
+		{
+			name: "valid header_name",
+			config: `{
+				"header_name": "x-header"
+			}`,
+		},
+		{
+			name: "invalid character in header_name",
+			config: `{
+				"header_name": "!header"
+			}`,
+			wantErr: true,
+			expectedErr: `{"config":{"header_name":"bad header name '!header', ` +
+				`allowed characters are A-Z, a-z, 0-9, '_', and '-'"}}`,
+		},
+		{
+			name: "first valid timeout",
+			config: `{
+				"timeout": 0
+			}`,
+		},
+		{
+			name: "last valid timeout",
+			config: `{
+				"timeout": 2147483646
+			}`,
+		},
+		{
+			name: "valid timeout",
+			config: `{
+				"timeout": 10
+			}`,
+		},
+		{
+			name: "invalid negative timeout",
+			config: `{
+				"timeout": -1
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"timeout":"value should be between 0 and 2147483646"}}`,
+		},
+		{
+			name: "invalid too big timeout",
+			config: `{
+				"timeout": 2147483647
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"timeout":"value should be between 0 and 2147483646"}}`,
+		},
+		{
+			name: "valid uuid",
+			config: `{
+				"uuid": "23e623b0-ca23-11ec-9d64-0242ac120002"
+			}`,
+		},
+		{
+			name: "invalid uuid",
+			config: `{
+				"uuid": "abc"
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"uuid":"expected a valid UUID"}}`,
+		},
+		{
+			name: "invalid empty uuid",
+			config: `{
+				"uuid": ""
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"uuid":"expected a valid UUID"}}`,
+		},
+		{
+			name: "invalid not-string uuid",
+			config: `{
+				"uuid": -1
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"uuid":"expected a string"}}`,
+		},
+		{
+			name: "valid auto_timestamp_s",
+			config: `{
+				"auto_timestamp_s": 1234
+			}`,
+		},
+		{
+			name: "invalid number auto_timestamp_s",
+			config: `{
+				"auto_timestamp_s": 1.234
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"auto_timestamp_s":"expected an integer"}}`,
+		},
+		{
+			name: "invalid string auto_timestamp_s",
+			config: `{
+				"auto_timestamp_s": "1234"
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"auto_timestamp_s":"expected an integer"}}`,
+		},
+		{
+			name: "valid auto_timestamp_ms",
+			config: `{
+				"auto_timestamp_ms": 1.234
+			}`,
+		},
+		{
+			name: "invalid auto_timestamp_ms",
+			config: `{
+				"auto_timestamp_ms": "1.234"
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"auto_timestamp_ms":"expected a number"}}`,
+		},
+		{
+			name: "valid name",
+			config: `{
+				"name": "foo.-_~"
+			}`,
+		},
+		{
+			name: "invalid name",
+			config: `{
+				"name": "foo.-_~!"
+			}`,
+			wantErr: true,
+			expectedErr: `{"config":{
+				"name":"invalid value 'foo.-_~!': it must only contain alphanumeric and '., -, _, ~' characters"
+				}}`,
+		},
+		{
+			name: "valid utf8_name",
+			config: `{
+				"utf8_name": "foo.-_~"
+			}`,
+		},
+		{
+			name: "invalid name with unaccepted ascii",
+			config: `{
+				"utf8_name": "fõõ.-_~"
+			}`,
+			wantErr: true,
+			expectedErr: `{"config":{
+				"utf8_name":"invalid value 'fõõ.-_~': the only accepted ascii characters are alphanumerics or ., -, _, and ~"
+				}}`,
+		},
+		{
+			name: "invalid name",
+			config: `{
+				"utf8_name": "foo.-_~!"
+			}`,
+			wantErr: true,
+			expectedErr: `{"config":{
+				"utf8_name":"invalid value 'foo.-_~!': the only accepted ascii characters are alphanumerics or ., -, _, and ~"
+				}}`,
+		},
+		{
+			name: "valid sni",
+			config: `{
+				"sni": "www.konghq.com"
+			}`,
+		},
+		{
+			name: "invalid sni with port",
+			config: `{
+				"sni": "www.konghq.com:8080"
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"sni":"must not have a port"}}`,
+		},
+		{
+			name: "invalid sni as IPv4",
+			config: `{
+				"sni": "192.0.2.0"
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"sni":"must not be an IP"}}`,
+		},
+		{
+			name: "invalid sni as IPv6",
+			config: `{
+				"sni": "2001:db8::1"
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"sni":"must not be an IP"}}`,
+		},
+		{
+			name: "valid tag",
+			config: `{
+				"tag": "tag1"
+			}`,
+		},
+		{
+			name: "invalid tag with invalid character",
+			config: `{
+				"tag": "tag1,"
+			}`,
+			wantErr: true,
+			expectedErr: `{"config":{
+				"tag":"invalid tag 'tag1,': expected printable ascii (except ` + "`,` and `/`" +
+				`) or valid utf-8 sequences"}}`,
+		},
+		{
+			name: "valid tags",
+			config: `{
+				"tags": [
+					"tag1"
+				]
+			}`,
+		},
+		{
+			name: "valid tags",
+			config: `{
+				"tags": [
+					"tag1",
+					"tag2!"
+				]
+			}`,
+		},
+		{
+			name: "invalid tags with invalid character",
+			config: `{
+				"tags": [
+					"tag1",
+					"tag2,"
+				]
+			}`,
+			wantErr: true,
+			expectedErr: `{"config":{"tags":["[2] = invalid tag 'tag2,': ` +
+				`expected printable ascii (except ` + "`,` and `/`)" + ` or valid utf-8 sequences"]}}`,
+		},
+		{
+			name: "invalid tags with invalid character",
+			config: `{
+				"tags": [
+					"tag1",
+					"tag2/"
+				]
+			}`,
+			wantErr: true,
+			expectedErr: `{"config":{"tags":["[2] = invalid tag 'tag2/': ` +
+				`expected printable ascii (except ` + "`,` and `/`)" + ` or valid utf-8 sequences"]}}`,
+		},
+		{
+			name: "invalid tags with ASCII utf8",
+			config: `{
+				"tags": [
+					"tagõ"
+				]
+			}`,
+			wantErr: true,
+			expectedErr: `{"config":{"tags":["invalid tag 'tagõ': ` +
+				`expected printable ascii (except ` + "`,` and `/`)" + ` or valid utf-8 sequences"]}}`,
+		},
+		{
+			name: "valid sources with ip only",
+			config: `{
+				"sources": [
+					{
+						"ip": "192.0.2.1"
+					},
+					{
+						"ip": "2001:db8::1"
+					}
+				]
+			}`,
+		},
+		{
+			name: "valid sources with port only",
+			config: `{
+				"sources": [
+					{
+						"port": 80
+					}
+				]
+			}`,
+		},
+		{
+			name: "valid sources with both ip and port",
+			config: `{
+				"sources": [
+					{
+						"ip": "192.0.2.1",
+						"port": 80
+					}
+				]
+			}`,
+		},
+		{
+			name: "valid sources with multiple entries",
+			config: `{
+				"sources": [
+					{
+						"ip": "192.0.2.1",
+						"port": 80
+					},
+					{
+						"ip": "2001:db8::1"
+					},
+					{
+						"port": 8080
+					}
+				]
+			}`,
+		},
+		{
+			name: "invalid sources with bogus ip",
+			config: `{
+				"sources": [
+					{
+						"ip": "192.0.2.1.1",
+						"port": 80
+					}
+				]
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"sources":[{"ip": "invalid ip or cidr range: '192.0.2.1.1'"}]}}`,
+		},
+		{
+			name: "invalid sources with bogus port",
+			config: `{
+				"sources": [
+					{
+						"ip": "192.0.2.1",
+						"port": -80
+					}
+				]
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"sources":[{"port": "value should be between 0 and 65535"}]}}`,
+		},
+		{
+			name: "valid destinations with ip only",
+			config: `{
+				"destinations": [
+					{
+						"ip": "192.0.2.1"
+					},
+					{
+						"ip": "2001:db8::1"
+					}
+				]
+			}`,
+		},
+		{
+			name: "valid destinations with port only",
+			config: `{
+				"destinations": [
+					{
+						"port": 80
+					}
+				]
+			}`,
+		},
+		{
+			name: "valid destinations with both ip and port",
+			config: `{
+				"destinations": [
+					{
+						"ip": "192.0.2.1",
+						"port": 80
+					},
+					{
+						"ip": "2001:db8::1",
+						"port": 80
+					}
+				]
+			}`,
+		},
+		{
+			name: "valid destinations with multiple entries",
+			config: `{
+				"destinations": [
+					{
+						"ip": "192.0.2.1",
+						"port": 80
+					},
+					{
+						"ip": "192.0.2.2"
+					},
+					{
+						"port": 8080
+					}
+				]
+			}`,
+		},
+		{
+			name: "invalid destinations with bogus ipv4",
+			config: `{
+				"destinations": [
+					{
+						"ip": "192.0.2.1.1",
+						"port": 80
+					}
+				]
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"destinations":[{"ip": "invalid ip or cidr range: '192.0.2.1.1'"}]}}`,
+		},
+		{
+			name: "invalid destinations with bogus ipv6",
+			config: `{
+				"destinations": [
+					{
+						"ip": "2001:db8p::1",
+						"port": 80
+					}
+				]
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"destinations":[{"ip": "invalid ip or cidr range: '2001:db8p::1'"}]}}`,
+		},
+		{
+			name: "invalid destinations with bogus port",
+			config: `{
+				"destinations": [
+					{
+						"ip": "192.0.2.1",
+						"port": -80
+					}
+				]
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"destinations":[{"port": "value should be between 0 and 65535"}]}}`,
+		},
+		{
+			name: "valid hosts",
+			config: `{
+				"hosts": [
+					"192.0.2.1",
+					"www.konghq.com"
+				]
+			}`,
+		},
+		{
+			name: "valid hosts with wildcards",
+			config: `{
+				"hosts": [
+					"192.0.2.1",
+					"*.konghq.com",
+					"konghq.*"
+				]
+			}`,
+		},
+		{
+			name: "valid hosts with wildcards",
+			config: `{
+				"hosts": [
+					"192.0.2.1",
+					"*konghq.com",
+					"*",
+					"konghq*",
+					"*.konghq.*",
+					"konghq.*.com"
+				]
+			}`,
+			wantErr: true,
+			expectedErr: `{"config":{"hosts":[
+				"[2] = invalid wildcard: must be placed at leftmost or rightmost label",
+				"[3] = invalid wildcard: must be placed at leftmost or rightmost label",
+				"[4] = invalid wildcard: must be placed at leftmost or rightmost label",
+				"[5] = invalid wildcard: must have at most one wildcard",
+				"[6] = invalid wildcard: must be placed at leftmost or rightmost label"
+				]}}`,
+		},
+		{
+			name: "valid semantic_version",
+			config: `{
+				"semantic_version": "1"
+			}`,
+		},
+		{
+			name: "valid semantic_version",
+			config: `{
+				"semantic_version": "1.2"
+			}`,
+		},
+		{
+			name: "valid semantic_version",
+			config: `{
+				"semantic_version": "1.2.3"
+			}`,
+		},
+		{
+			name: "valid semantic_version",
+			config: `{
+				"semantic_version": "100.200.300"
+			}`,
+		},
+		{
+			name: "valid semantic_version",
+			config: `{
+				"semantic_version": "1.2.3-rc.1"
+			}`,
+		},
+		{
+			name: "valid semantic_version",
+			config: `{
+				"semantic_version": "1.2.3-alpha.1"
+			}`,
+		},
+		{
+			name: "valid semantic_version",
+			config: `{
+				"semantic_version": "1.2.3-beta.1"
+			}`,
+		},
+		{
+			name: "valid semantic_version",
+			config: `{
+				"semantic_version": "1.2.3.4-enterprise-edition"
+			}`,
+		},
+		{
+			name: "invalid semantic_version",
+			config: `{
+				"semantic_version": "hello"
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"semantic_version":"invalid version number: must be in format of X.Y.Z"}}`,
+		},
+		{
+			name: "invalid semantic_version",
+			config: `{
+				"semantic_version": ".1"
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"semantic_version":"invalid version number: must be in format of X.Y.Z"}}`,
+		},
+		{
+			name: "invalid semantic_version",
+			config: `{
+				"semantic_version": "1..1"
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"semantic_version":"must not have empty version segments"}}`,
+		},
+		{
+			name: "lua code not accepted",
+			config: `{
+				"lua_code": {"header": "return nil"}
+			}`,
+			wantErr: true,
+			expectedErr: `{"config":{
+				"lua_code":"Error parsing function: lua-tree/share/lua/5.1/kong/tools/sandbox.lua:119: ` +
+				`loading of untrusted Lua code disabled because 'untrusted_lua' config option is set to 'off'"
+				}}`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			plugin := `{
+				"name": "all-typedefs",
+				"enabled": true,
+				"protocols": ["http"],
+				"config": %s
+			}`
+			err := v.Validate(fmt.Sprintf(plugin, test.config))
+			if test.wantErr {
+				assert.NotNil(t, err)
+				require.JSONEq(t, test.expectedErr, err.Error())
+			} else {
+				assert.Nil(t, err)
+			}
+		})
+	}
+}
+
+func TestValidator_ValidateMethodsAndHeaders(t *testing.T) {
+	v, err := NewValidator(ValidatorOpts{})
+	assert.Nil(t, err)
+	schema, err := ioutil.ReadFile("testdata/methods-and-headers.lua")
+	assert.Nil(t, err)
+	pluginName, err := v.LoadSchema(string(schema))
+	assert.Nil(t, err)
+	assert.EqualValues(t, "methods-and-headers", pluginName)
+
+	tests := []struct {
+		name        string
+		config      string
+		wantErr     bool
+		expectedErr string
+	}{
+		{
+			name: "valid using single header in array of headers",
+			config: `{
+				"headers": {
+					"my-header": [
+					  "value1"
+					]
+				}
+			}`,
+		},
+		{
+			name: "valid using multiple headers in array of headers",
+			config: `{
+				"headers": {
+					"my-header": [
+					  "value1"
+					],
+					"my-other-header": [
+					  "value2",
+					  "value3"
+					]
+				}
+			}`,
+		},
+		{
+			name: "invalid headers with invalid header name",
+			config: `{
+				"headers": {
+					"my-header!": ["value1"]
+				}
+			}`,
+			wantErr: true,
+			expectedErr: `{"config":{
+				"headers":"bad header name 'my-header!', allowed characters are A-Z, a-z, 0-9, '_', and '-'"
+				}}`,
+		},
+		{
+			name: "invalid headers with invalid header name as second header",
+			config: `{
+				"headers": {
+					"my-valid-header": ["value1"],
+					"my-invalid-header!": ["value1"]
+				}
+			}`,
+			wantErr: true,
+			expectedErr: `{"config":{
+				"headers":"bad header name 'my-invalid-header!', allowed characters are A-Z, a-z, 0-9, '_', and '-'"
+				}}`,
+		},
+		{
+			name: "valid methods",
+			config: `{
+				"methods": ["GET", "POST"]
+			}`,
+		},
+		{
+			name: "invalid methods",
+			config: `{
+				"methods": ["GET", "post"]
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"methods":["[2] = invalid value: post"]}}`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			plugin := `{
+				"name": "methods-and-headers",
+				"enabled": true,
+				"protocols": ["http"],
+				"config": %s
+			}`
+			err := v.Validate(fmt.Sprintf(plugin, test.config))
+			if test.wantErr {
+				assert.NotNil(t, err)
+				require.JSONEq(t, test.expectedErr, err.Error())
+			} else {
+				assert.Nil(t, err)
+			}
+		})
+	}
+}
+
 func getErrForField(e error, path string) string {
 	var errMap map[string]interface{}
 	err := json.Unmarshal([]byte(e.Error()), &errMap)
