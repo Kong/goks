@@ -27,8 +27,7 @@ func (v *Validator) ValidateSchema(schema string) (string, error) {
 }
 
 func (v *Validator) LoadSchema(schema string) (string, error) {
-	pluginName, err := v.vm.CallByParams("load_plugin_schema", schema)
-	return pluginName, err
+	return v.vm.CallByParams("load_plugin_schema", schema)
 }
 
 func (v *Validator) UnloadSchema(schema string) error {
