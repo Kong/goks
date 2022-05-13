@@ -27,6 +27,70 @@ type KongPluginSchema struct {
 	Fields []map[string]interface{} `json:"fields,omitempty" yaml:"fields,omitempty"`
 }
 
+func TestValidator_ValidateSchema(t *testing.T) {
+	v, err := NewValidator(ValidatorOpts{})
+	assert.Nil(t, err)
+
+	t.Run("validate a valid schema", func(t *testing.T) {
+		schema, err := ioutil.ReadFile("testdata/key-auth.lua")
+		assert.Nil(t, err)
+		pluginName, err := v.ValidateSchema(string(schema))
+		assert.Nil(t, err)
+		assert.EqualValues(t, "key-auth", pluginName)
+	})
+
+	t.Run("revalidate valid schemas multiple times", func(t *testing.T) {
+		validPluginSchemas := []string{
+			"acl",
+			"all-typedefs",
+			"between",
+			"custom-entity-check",
+			"http-log",
+			"key-auth",
+			"rate-limiting",
+			"udp-log",
+		}
+
+		for _, validPluginSchema := range validPluginSchemas {
+			for i := 0; i < 2; i++ {
+				schema, err := ioutil.ReadFile(fmt.Sprintf("testdata/%s.lua", validPluginSchema))
+				assert.Nil(t, err)
+				pluginName, err := v.ValidateSchema(string(schema))
+				assert.Nil(t, err)
+				assert.EqualValues(t, validPluginSchema, pluginName)
+			}
+		}
+	})
+
+	t.Run("fail validation against different schema problems", func(t *testing.T) {
+		t.Run("bad schema", func(t *testing.T) {
+			schema, err := ioutil.ReadFile("testdata/bad_schema.lua")
+			assert.Nil(t, err)
+			pluginName, err := v.ValidateSchema(string(schema))
+			assert.NotNil(t, err)
+			assert.Empty(t, pluginName)
+			expected := "name: field required for entity check"
+			assert.True(t, strings.Contains(err.Error(), expected))
+		})
+
+		t.Run("empty schema", func(t *testing.T) {
+			pluginName, err := v.ValidateSchema("")
+			assert.NotNil(t, err)
+			assert.Empty(t, pluginName)
+			expected := "invalid plugin schema: cannot be empty"
+			assert.True(t, strings.Contains(err.Error(), expected))
+		})
+
+		t.Run("empty schema length > 0", func(t *testing.T) {
+			pluginName, err := v.ValidateSchema("    ")
+			assert.NotNil(t, err)
+			assert.Empty(t, pluginName)
+			expected := "invalid plugin schema: cannot be empty"
+			assert.True(t, strings.Contains(err.Error(), expected))
+		})
+	})
+}
+
 func TestValidator_LoadSchema(t *testing.T) {
 	v, err := NewValidator(ValidatorOpts{})
 	assert.Nil(t, err)
@@ -758,6 +822,51 @@ func TestValidator_ValidateBetweenEntityCheck(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestValidator_UnloadSchema(t *testing.T) {
+	v, err := NewValidator(ValidatorOpts{})
+	assert.Nil(t, err)
+
+	pluginACL := `{
+		"name": "acl",
+		"enabled": true,
+		"protocols": [ "http" ],
+		"config": { "allow": [ "foo" ] }
+	}`
+
+	t.Run("ensure plugin schemas can be unloaded", func(t *testing.T) {
+		// Ensure plugin schema is loaded and a configuration can be validated
+		schema, err := ioutil.ReadFile("testdata/acl.lua")
+		assert.Nil(t, err)
+		pluginName, err := v.LoadSchema(string(schema))
+		assert.Nil(t, err)
+		assert.Equal(t, "acl", pluginName)
+		err = v.Validate(pluginACL)
+		assert.Nil(t, err)
+
+		// Unload the schema and ensure failure when validating plugin configuration
+		expectedErr := `{
+			"name": "plugin 'acl' not enabled; add it to the 'plugins' configuration property"
+		}`
+		err = v.UnloadSchema(pluginName)
+		assert.Nil(t, err)
+		err = v.Validate(pluginACL)
+		assert.NotNil(t, err)
+		require.JSONEq(t, expectedErr, err.Error())
+	})
+
+	t.Run("ensure unloading of empty plugin schema return error", func(t *testing.T) {
+		err := v.UnloadSchema("")
+		assert.NotNil(t, err)
+		assert.EqualError(t, err, "error unloading schema for plugin: plugin name must not be empty")
+	})
+
+	t.Run("ensure unloading of non-existent plugin schema return error", func(t *testing.T) {
+		err := v.UnloadSchema("invalid-plugin-name")
+		assert.NotNil(t, err)
+		assert.EqualError(t, err, "error unloading schema for plugin: 'invalid-plugin-name' does not exist")
+	})
 }
 
 func TestValidator_ProcessAutoFields(t *testing.T) {
