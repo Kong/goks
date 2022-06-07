@@ -64,6 +64,12 @@ tools/utils.lua:
 
 entities/plugins.lua:
 - introduce updated_at field on plugin entity for compat
+
+tools/sandbox.lua
+- set configuration.enabled to true
+- set configuration.sandbox_enabled to true
+
+
 ---
 diff --git a/lua-tree/share/lua/5.1/kong/db/schema/entities/certificates.lua b/lua-tree/share/lua/5.1/kong/db/schema/entities/certificates.lua
 index 31c4348..004a973 100644
@@ -73,11 +79,11 @@ index 31c4348..004a973 100644
  local typedefs = require "kong.db.schema.typedefs"
 -local openssl_pkey = require "resty.openssl.pkey"
 -local openssl_x509 = require "resty.openssl.x509"
- 
- 
+
+
  local type = type
 @@ -24,51 +22,5 @@ return {
- 
+
    entity_checks = {
      { mutually_required = { "cert_alt", "key_alt" } },
 -    { custom_entity_check = {
@@ -149,8 +155,8 @@ index b1093a2..0afc200 100644
  local Schema = require "kong.db.schema"
 -local url = require "socket.url"
 +local url = require "patched.url"
- 
- 
+
+
  local tostring = tostring
 diff --git a/lua-tree/share/lua/5.1/kong/db/schema/init.lua b/lua-tree/share/lua/5.1/kong/db/schema/init.lua
 index 625bb0c63..956a09ec9 100644
@@ -164,7 +170,7 @@ index 625bb0c63..956a09ec9 100644
 -local vault        = require "kong.pdk.vault".new()
 +local cjson        = { array_mt = {} } --- TODO(hbagdi) XXX analyze the impact
 +local uuid         = require "go.uuid".generate
- 
+
 -
 -local is_reference = vault.is_reference
 -local dereference  = vault.get
@@ -183,7 +189,7 @@ index 625bb0c63..956a09ec9 100644
 -    return re_find(value, uuid_regex, "ioj") and true or nil
 +    return re_match(value, uuid_regex) and true or nil
    end,
- 
+
    contains = function(array, wanted)
 @@ -965,10 +961,6 @@ function Schema:validate_field(field, value)
        field.len_min = 1
@@ -285,8 +291,8 @@ index c1a150a..3d6c639 100644
 -local socket_url = require "socket.url"
 +local socket_url = require "patched.url"
  local constants = require "kong.constants"
- 
- 
+
+
  local pairs = pairs
 -local match = string.match
 +local match = require "go.re2".match
@@ -332,8 +338,8 @@ index c1a150a..3d6c639 100644
      "invalid value '" .. name ..
        "': the only accepted ascii characters are alphanumerics or ., -, _, and ~"
 @@ -216,22 +215,12 @@ end
- 
- 
+
+
  local function validate_certificate(cert)
 -  local _, err = openssl_x509.new(cert)
 -  if err then
@@ -343,8 +349,8 @@ index c1a150a..3d6c639 100644
 -  return true
 +  return nil, "openssl: not yet implemented"
  end
- 
- 
+
+
  local function validate_key(key)
 -  local _, err =  openssl_pkey.new(key)
 -  if err then
@@ -354,8 +360,8 @@ index c1a150a..3d6c639 100644
 -  return true
 +  return nil, "openssl: not yet implemented"
  end
- 
- 
+
+
 diff --git a/lua-tree/share/lua/5.1/kong/tools/utils.lua b/lua-tree/share/lua/5.1/kong/tools/utils.lua
 index 301d8d4..a1d6bbc 100644
 --- a/lua-tree/share/lua/5.1/kong/tools/utils.lua
@@ -363,7 +369,7 @@ index 301d8d4..a1d6bbc 100644
 @@ -8,18 +8,11 @@
  -- @license [Apache 2.0](https://opensource.org/licenses/Apache-2.0)
  -- @module kong.tools.utils
- 
+
 -local ffi = require "ffi"
 -local uuid = require "resty.jit-uuid"
 +local uuid = require "go.uuid"
@@ -372,7 +378,7 @@ index 301d8d4..a1d6bbc 100644
  local pl_utils = require "pl.utils"
 -local pl_path = require "pl.path"
 -local zlib = require "ffi-zlib"
- 
+
 -local C             = ffi.C
 -local ffi_fill      = ffi.fill
 -local ffi_new       = ffi.new
@@ -393,7 +399,7 @@ index 301d8d4..a1d6bbc 100644
 -local inflate_gzip  = zlib.inflateGzip
 -local deflate_gzip  = zlib.deflateGzip
  local stringio_open = pl_stringio.open
- 
+
 -ffi.cdef[[
 -typedef unsigned char u_char;
 -
@@ -420,7 +426,7 @@ index 301d8d4..a1d6bbc 100644
 @@ -115,111 +86,13 @@ do
    end
  end
- 
+
 -do
 -  local trusted_certs_paths = {
 -    "/etc/ssl/certs/ca-certificates.crt",                -- Debian/Ubuntu/Gentoo
@@ -523,13 +529,13 @@ index 301d8d4..a1d6bbc 100644
 -end
 +local get_rand_bytes = require "go.rand".get_rand_bytes
 +_M.get_rand_bytes = get_rand_bytes
- 
+
  --- Generates a v4 uuid.
  -- @function uuid
  -- @return string with uuid
 -_M.uuid = uuid.generate_v4
 +_M.uuid = uuid.generate
- 
+
  --- Generates a random unique string
  -- @return string  The random string (a chunk of base64ish-encoded random bytes)
 @@ -252,7 +125,7 @@ function _M.is_valid_uuid(str)
@@ -539,15 +545,15 @@ index 301d8d4..a1d6bbc 100644
 -  return re_find(str, uuid_regex, 'ioj') ~= nil
 +  return re_find(str, uuid_regex) ~= nil
  end
- 
+
  -- function below is more acurate, but invalidates previously accepted uuids and hence causes
 @@ -263,7 +136,7 @@ end
  --end
- 
+
  do
 -  local url = require "socket.url"
 +  local url = require "patched.url"
- 
+
    --- URL escape and format key and value
    -- values should be already decoded or the `raw` option should be passed to prevent double-encoding
 @@ -736,7 +609,7 @@ end
@@ -557,21 +563,21 @@ index 301d8d4..a1d6bbc 100644
 -  local ipmatcher =  require "resty.ipmatcher"
 +  local ipmatcher =  require "go.ipmatcher"
    local sub = string.sub
- 
+
    local ipv4_prefixes = {}
 @@ -1026,7 +899,7 @@ _M.validate_header_name = function(name)
      return nil, "no header name provided"
    end
- 
+
 -  if re_match(name, "^[a-zA-Z0-9-_]+$", "jo") then
 +  if re_match(name, "^[a-zA-Z0-9-_]+$") then
      return name
    end
- 
+
 @@ -1044,7 +917,7 @@ _M.validate_cookie_name = function(name)
      return nil, "no cookie name provided"
    end
- 
+
 -  if re_match(name, "^[a-zA-Z0-9-_]+$", "jo") then
 +  if re_match(name, "^[a-zA-Z0-9-_]+$") then
      return name
@@ -579,8 +585,8 @@ index 301d8d4..a1d6bbc 100644
 
 @@ -1177,82 +1050,6 @@ function _M.bytes_to_str(bytes, unit, scale)
  end
- 
- 
+
+
 -do
 -  local NGX_ERROR = ngx.ERROR
 -
@@ -1020,11 +1026,35 @@ index 1707ef6..b4e457d 100644
 --- a/lua-tree/share/lua/5.1/pl/compat.lua
 +++ b/lua-tree/share/lua/5.1/pl/compat.lua
 @@ -26,7 +26,7 @@ end
- 
+
  --- the directory separator character for the current platform.
  -- @field dir_separator
 -compat.dir_separator = _G.package.config:sub(1,1)
 +--compat.dir_separator = _G.package.config:sub(1,1)
- 
+
  --- boolean flag this is a Windows platform.
  -- @field is_windows
+
+diff --git a/lua-tree/share/lua/5.1/kong/tools/sandbox.lua b/lua-tree/share/lua/5.1/kong/tools/sandbox.lua
+index 0121ba715..eabbd3b62 100644
+--- a/lua-tree/share/lua/5.1/kong/tools/sandbox.lua
++++ b/lua-tree/share/lua/5.1/kong/tools/sandbox.lua
+@@ -46,16 +46,10 @@ end
+
+ local lazy_conf_methods = {
+   enabled = function(self)
+-    return kong and
+-           kong.configuration and
+-           kong.configuration.untrusted_lua and
+-           kong.configuration.untrusted_lua ~= 'off'
++    return true
+   end,
+   sandbox_enabled = function(self)
+-    return kong and
+-           kong.configuration and
+-           kong.configuration.untrusted_lua and
+-           kong.configuration.untrusted_lua == 'sandbox'
++    return true
+   end,
+   requires = function(self)
+     local conf_r = kong and

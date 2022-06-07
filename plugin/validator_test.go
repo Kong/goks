@@ -1913,15 +1913,28 @@ func TestValidator_ValidateAllTypedefs(t *testing.T) {
 			expectedErr: `{"config":{"semantic_version":"must not have empty version segments"}}`,
 		},
 		{
-			name: "lua code not accepted",
+			name: "valid lua code gets accepted",
 			config: `{
 				"lua_code": {"header": "return nil"}
 			}`,
+		},
+		{
+			name: "invalid lua code gets rejected",
+			config: `{
+				"lua_code": "test"
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config":{"lua_code":"expected a map"}}`,
+		},
+		{
+			name: "invalid lua code syntax gets rejected",
+			config: `{
+				"lua_code": {"header": "os.execute('echo 10)"}
+			}`,
 			wantErr: true,
-			expectedErr: `{"config":{
-				"lua_code":"Error parsing function: lua-tree/share/lua/5.1/kong/tools/sandbox.lua:119: ` +
-				`loading of untrusted Lua code disabled because 'untrusted_lua' config option is set to 'off'"
-				}}`,
+			expectedErr: `{"config":{"lua_code": "Error parsing function: ` +
+				`lua-tree/share/lua/5.1/kong/tools/kong-lua-sandbox.lua:146: ` +
+				`<string> at EOF:   unterminated string\n"}}`,
 		},
 	}
 

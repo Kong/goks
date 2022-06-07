@@ -46,16 +46,10 @@ end
 
 local lazy_conf_methods = {
   enabled = function(self)
-    return kong and
-           kong.configuration and
-           kong.configuration.untrusted_lua and
-           kong.configuration.untrusted_lua ~= 'off'
+    return true
   end,
   sandbox_enabled = function(self)
-    return kong and
-           kong.configuration and
-           kong.configuration.untrusted_lua and
-           kong.configuration.untrusted_lua == 'sandbox'
+    return true
   end,
   requires = function(self)
     local conf_r = kong and
