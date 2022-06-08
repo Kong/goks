@@ -64,6 +64,12 @@ tools/utils.lua:
 
 entities/plugins.lua:
 - introduce updated_at field on plugin entity for compat
+
+
+tools/sandbox.lua
+- set configuration.enabled to true
+- set configuration.sandbox_enabled to true
+
 ---
 diff --git a/lua-tree/share/lua/5.1/kong/db/schema/entities/certificates.lua b/lua-tree/share/lua/5.1/kong/db/schema/entities/certificates.lua
 index 31c4348..004a973 100644
@@ -1028,3 +1034,33 @@ index 1707ef6..b4e457d 100644
  
  --- boolean flag this is a Windows platform.
  -- @field is_windows
+
+diff --git a/lua-tree/share/lua/5.1/kong/tools/sandbox.lua b/lua-tree/share/lua/5.1/kong/tools/sandbox.lua
+index 0121ba715..fc27a9b5e 100644
+--- a/lua-tree/share/lua/5.1/kong/tools/sandbox.lua
++++ b/lua-tree/share/lua/5.1/kong/tools/sandbox.lua
+@@ -43,19 +43,14 @@ local function link(q, o, target)
+   link(r, o[h], target[h])
+ end
+ 
+-
++-- make sure sandbox mode is enabled by overwriting
++-- 'enabled' and 'sandbox_enabled' variabled
+ local lazy_conf_methods = {
+   enabled = function(self)
+-    return kong and
+-           kong.configuration and
+-           kong.configuration.untrusted_lua and
+-           kong.configuration.untrusted_lua ~= 'off'
++    return true
+   end,
+   sandbox_enabled = function(self)
+-    return kong and
+-           kong.configuration and
+-           kong.configuration.untrusted_lua and
+-           kong.configuration.untrusted_lua == 'sandbox'
++    return true
+   end,
+   requires = function(self)
+     local conf_r = kong and
+
