@@ -1929,12 +1929,18 @@ func TestValidator_ValidateAllTypedefs(t *testing.T) {
 		{
 			name: "invalid lua code syntax gets rejected",
 			config: `{
-				"lua_code": {"header": "os.execute('echo 10)"}
+				"lua_code": {"header": "hello"}
 			}`,
 			wantErr: true,
 			expectedErr: `{"config":{"lua_code": "Error parsing function: ` +
 				`lua-tree/share/lua/5.1/kong/tools/kong-lua-sandbox.lua:146: ` +
-				`<string> at EOF:   unterminated string\n"}}`,
+				`<string> at EOF:   parse error\n"}}`,
+		},
+		{
+			name: "valid lua code but invalid function call doesn't return an error",
+			config: `{
+				"lua_code": {"header": "os.execute('echo hello')"}
+			}`,
 		},
 	}
 

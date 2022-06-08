@@ -43,7 +43,8 @@ local function link(q, o, target)
   link(r, o[h], target[h])
 end
 
-
+-- make sure sandbox mode is enabled by overwriting
+-- 'enabled' and 'sandbox_enabled' variabled
 local lazy_conf_methods = {
   enabled = function(self)
     return true
