@@ -1562,6 +1562,18 @@ func TestValidator_ValidateAllTypedefs(t *testing.T) {
 			expectedErr: `{"config":{"sni":"must not be an IP"}}`,
 		},
 		{
+			name: "valid certificate",
+			config: `{
+				"certificate": "xxxyyyzzz"
+			}`,
+		},
+		{
+			name: "valid key",
+			config: `{
+				"key": "xxxyyyzzz"
+			}`,
+		},
+		{
 			name: "valid tag",
 			config: `{
 				"tag": "tag1"

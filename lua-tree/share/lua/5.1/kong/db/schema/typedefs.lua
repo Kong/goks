@@ -5,6 +5,7 @@ local Schema = require "kong.db.schema"
 local socket_url = require "patched.url"
 local constants = require "kong.constants"
 
+local x509 = require "go.x509"
 
 local pairs = pairs
 local match = require "go.re2".match
@@ -213,16 +214,6 @@ local function validate_url(url)
 end
 
 
-local function validate_certificate(cert)
-  return nil, "openssl: not yet implemented"
-end
-
-
-local function validate_key(key)
-  return nil, "openssl: not yet implemented"
-end
-
-
 local typedefs = {}
 
 
@@ -373,13 +364,13 @@ typedefs.sni = Schema.define {
 
 typedefs.certificate = Schema.define {
   type = "string",
-  custom_validator = validate_certificate,
+  custom_validator = x509.validate_certificate,
 }
 
 
 typedefs.key = Schema.define {
   type = "string",
-  custom_validator = validate_key,
+  custom_validator = x509.validate_key,
 }
 
 

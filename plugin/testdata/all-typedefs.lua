@@ -26,6 +26,7 @@ return {
           { name = typedefs.name },
           { utf8_name = typedefs.utf8_name },
           { sni = typedefs.sni },
+          { certificate = typedefs.certificate },
           { key = typedefs.key },
           { tag = typedefs.tag({ required = false }) },
           { tags = typedefs.tags },
