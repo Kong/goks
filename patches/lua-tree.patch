@@ -281,7 +281,7 @@ diff --git a/lua-tree/share/lua/5.1/kong/db/schema/typedefs.lua b/lua-tree/share
 index c1a150a..3d6c639 100644
 --- a/lua-tree/share/lua/5.1/kong/db/schema/typedefs.lua
 +++ b/lua-tree/share/lua/5.1/kong/db/schema/typedefs.lua
-@@ -1,15 +1,13 @@
+@@ -1,15 +1,14 @@
  --- A library of ready-to-use type synonyms to use in schema definitions.
  -- @module kong.db.schema.typedefs
  local utils = require "kong.tools.utils"
@@ -292,6 +292,7 @@ index c1a150a..3d6c639 100644
 +local socket_url = require "patched.url"
  local constants = require "kong.constants"
  
++local x509 = require "go.x509"
  
  local pairs = pairs
 -local match = string.match
@@ -299,7 +300,7 @@ index c1a150a..3d6c639 100644
  local gsub = string.gsub
  local null = ngx.null
  local type = type
-@@ -63,8 +61,8 @@ end
+@@ -63,8 +62,8 @@ end
 
 
  local function validate_path(path)
@@ -337,31 +338,49 @@ index c1a150a..3d6c639 100644
      return nil,
      "invalid value '" .. name ..
        "': the only accepted ascii characters are alphanumerics or ., -, _, and ~"
-@@ -216,22 +215,12 @@ end
- 
- 
- local function validate_certificate(cert)
+@@ -215,26 +214,6 @@
+ end
+
+
+-local function validate_certificate(cert)
 -  local _, err = openssl_x509.new(cert)
 -  if err then
 -    return nil, "invalid certificate: " .. err
 -  end
 -
 -  return true
-+  return nil, "openssl: not yet implemented"
- end
- 
- 
- local function validate_key(key)
+-end
+-
+-
+-local function validate_key(key)
 -  local _, err =  openssl_pkey.new(key)
 -  if err then
 -    return nil, "invalid key: " .. err
 -  end
 -
 -  return true
-+  return nil, "openssl: not yet implemented"
- end
- 
- 
+-end
+-
+-
+ local typedefs = {}
+
+
+@@ -385,13 +364,13 @@ typedefs.sni = Schema.define {
+
+ typedefs.certificate = Schema.define {
+   type = "string",
+-  custom_validator = validate_certificate,
++  custom_validator = x509.validate_certificate,
+ }
+
+
+ typedefs.key = Schema.define {
+   type = "string",
+-  custom_validator = validate_key,
++  custom_validator = x509.validate_key,
+ }
+
+
 diff --git a/lua-tree/share/lua/5.1/kong/tools/utils.lua b/lua-tree/share/lua/5.1/kong/tools/utils.lua
 index 301d8d4..a1d6bbc 100644
 --- a/lua-tree/share/lua/5.1/kong/tools/utils.lua
