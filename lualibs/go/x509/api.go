@@ -3,6 +3,7 @@ package x509
 import (
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 
 	lua "github.com/yuin/gopher-lua"
 )
@@ -20,12 +21,7 @@ func validateCertificate(l *lua.LState) int {
 		return pushErr(l, "failed to parse certificate")
 	}
 
-	cert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		return pushErr(l, err.Error())
-	}
-
-	_, err = cert.Verify(x509.VerifyOptions{})
+	_, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
 		return pushErr(l, err.Error())
 	}
@@ -41,9 +37,24 @@ func validateKey(l *lua.LState) int {
 		return pushErr(l, "failed to parse key")
 	}
 
-	_, err := x509.ParsePKIXPublicKey(block.Bytes)
-	if err != nil {
-		return pushErr(l, err.Error())
+	switch block.Type {
+	case "RSA PRIVATE KEY":
+		if _, err := x509.ParsePKCS1PrivateKey(block.Bytes); err != nil {
+			return pushErr(l, err.Error())
+		}
+
+	case "EC PRIVATE KEY":
+		if _, err := x509.ParseECPrivateKey(block.Bytes); err != nil {
+			return pushErr(l, err.Error())
+		}
+
+	case "PRIVATE KEY":
+		if _, err := x509.ParsePKCS8PrivateKey(block.Bytes); err != nil {
+			return pushErr(l, err.Error())
+		}
+
+	default:
+		return pushErr(l, fmt.Sprintf("Unknown Key type %s", block.Type))
 	}
 
 	l.Push(lua.LTrue)
