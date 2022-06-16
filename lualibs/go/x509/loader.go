@@ -13,5 +13,5 @@ func Loader(l *lua.LState) int {
 
 var api = map[string]lua.LGFunction{
 	"validate_certificate": validateCertificate,
-	"validate_key": validateKey,
+	"validate_key":         validateKey,
 }
