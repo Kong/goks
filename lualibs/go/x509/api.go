@@ -9,9 +9,10 @@ import (
 )
 
 func pushErr(l *lua.LState, msg string) int {
+	base := l.GetTop()
 	l.Push(lua.LNil)
 	l.Push(lua.LString(msg))
-	return 2
+	return l.GetTop() - base
 }
 
 func validateCertificate(l *lua.LState) int {
