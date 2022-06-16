@@ -120,12 +120,8 @@ do
   _M.random_string = random_string
 end
 
-local uuid_regex = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 function _M.is_valid_uuid(str)
-  if type(str) ~= 'string' or #str ~= 36 then
-    return false
-  end
-  return re_find(str, uuid_regex) ~= nil
+  return uuid.validate(str)
 end
 
 -- function below is more acurate, but invalidates previously accepted uuids and hence causes
@@ -1048,7 +1044,6 @@ function _M.bytes_to_str(bytes, unit, scale)
 
   error("invalid unit '" .. unit .. "' (expected 'k/K', 'm/M', or 'g/G')", 2)
 end
-
 
 local get_mime_type
 local get_error_template
