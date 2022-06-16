@@ -1624,10 +1624,34 @@ func TestValidator_ValidateAllTypedefs(t *testing.T) {
 			}),
 		},
 		{
+			name: "invalid cert",
+			config: jsonify(map[string]string{
+				"certificate": "bla",
+			}),
+			wantErr:     true,
+			expectedErr: `{"config": {"certificate": "failed to parse certificate"}}`,
+		},
+		{
+			name: "wrong cert type",
+			config: `{
+				"certificate": 9
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config": {"certificate": "expected a string"}}`,
+		},
+		{
 			name: "valid key",
 			config: jsonify(map[string]string{
 				"key": pluginTesting.Key,
 			}),
+		},
+		{
+			name: "wrong key type",
+			config: `{
+			"key": 9
+		}`,
+			wantErr:     true,
+			expectedErr: `{"config": {"key": "expected a string"}}`,
 		},
 		{
 			name: "valid ecdsa-with-SHA256 key",
@@ -1676,6 +1700,16 @@ func TestValidator_ValidateAllTypedefs(t *testing.T) {
 			config: jsonify(map[string]string{
 				"key": pluginTesting.KeyCA,
 			}),
+		},
+		{
+			name: "invalid key",
+			config: jsonify(map[string]string{
+				"key": "bla",
+			}),
+			wantErr: true,
+			expectedErr: `{"config": {
+				"key": "failed to parse key"
+			}}`,
 		},
 		{
 			name: "valid tag",

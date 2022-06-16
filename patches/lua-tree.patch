@@ -46,7 +46,9 @@ schema/init.lua:
 
 schema/typedefs.lua:
 - use patched.url instead of socket.url
-- disable openssl
+- use crypto/x509 and encoding/pem instead of lua-resty-openssl
+  for certificate and key verification.  Only checks they're parseable,
+  not full validation
 - use go.re2::match instead of string.match
 - fix tag validation; switch from decimal ASCII code to hex
 - fix validate_path regex due to go.re2::match
