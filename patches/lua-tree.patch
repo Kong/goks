@@ -384,7 +384,7 @@ index c1a150a..3d6c639 100644
 
 
 diff --git a/lua-tree/share/lua/5.1/kong/tools/utils.lua b/lua-tree/share/lua/5.1/kong/tools/utils.lua
-index 301d8d4..a1d6bbc 100644
+index 6c92098cc..c3c3c12fe 100644
 --- a/lua-tree/share/lua/5.1/kong/tools/utils.lua
 +++ b/lua-tree/share/lua/5.1/kong/tools/utils.lua
 @@ -8,18 +8,11 @@
@@ -443,7 +443,7 @@ index 301d8d4..a1d6bbc 100644
 -
  local _M = {}
  local YIELD_ITERATIONS = 500
-
+ 
 @@ -115,111 +86,13 @@ do
    end
  end
@@ -559,16 +559,21 @@ index 301d8d4..a1d6bbc 100644
  
  --- Generates a random unique string
  -- @return string  The random string (a chunk of base64ish-encoded random bytes)
-@@ -252,7 +125,7 @@ function _M.is_valid_uuid(str)
-   if type(str) ~= 'string' or #str ~= 36 then
-     return false
-   end
+@@ -247,12 +120,8 @@ do
+   _M.random_string = random_string
+ end
+ 
+-local uuid_regex = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+ function _M.is_valid_uuid(str)
+-  if type(str) ~= 'string' or #str ~= 36 then
+-    return false
+-  end
 -  return re_find(str, uuid_regex, 'ioj') ~= nil
-+  return re_find(str, uuid_regex) ~= nil
++  return uuid.validate(str)
  end
  
  -- function below is more acurate, but invalidates previously accepted uuids and hence causes
-@@ -263,7 +136,7 @@ end
+@@ -263,7 +132,7 @@ end
  --end
  
  do
@@ -577,16 +582,16 @@ index 301d8d4..a1d6bbc 100644
  
    --- URL escape and format key and value
    -- values should be already decoded or the `raw` option should be passed to prevent double-encoding
-@@ -736,7 +609,7 @@ end
-
-
+@@ -736,7 +605,7 @@ end
+ 
+ 
  do
 -  local ipmatcher =  require "resty.ipmatcher"
 +  local ipmatcher =  require "go.ipmatcher"
    local sub = string.sub
  
    local ipv4_prefixes = {}
-@@ -1026,7 +899,7 @@ _M.validate_header_name = function(name)
+@@ -1026,7 +895,7 @@ _M.validate_header_name = function(name)
      return nil, "no header name provided"
    end
  
@@ -595,7 +600,7 @@ index 301d8d4..a1d6bbc 100644
      return name
    end
  
-@@ -1044,7 +917,7 @@ _M.validate_cookie_name = function(name)
+@@ -1044,7 +913,7 @@ _M.validate_cookie_name = function(name)
      return nil, "no cookie name provided"
    end
  
@@ -603,11 +608,12 @@ index 301d8d4..a1d6bbc 100644
 +  if re_match(name, "^[a-zA-Z0-9-_]+$") then
      return name
    end
-
-@@ -1177,82 +1050,6 @@ function _M.bytes_to_str(bytes, unit, scale)
+ 
+@@ -1176,83 +1045,6 @@ function _M.bytes_to_str(bytes, unit, scale)
+   error("invalid unit '" .. unit .. "' (expected 'k/K', 'm/M', or 'g/G')", 2)
  end
  
- 
+-
 -do
 -  local NGX_ERROR = ngx.ERROR
 -

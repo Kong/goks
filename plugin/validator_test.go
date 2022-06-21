@@ -389,6 +389,35 @@ func TestValidator_Validate(t *testing.T) {
 	pluginName, err = v.LoadSchema(string(schema))
 	assert.EqualValues(t, "udp-log", pluginName)
 	assert.Nil(t, err)
+	schema, err = ioutil.ReadFile("testdata/uuid_custom.lua")
+	assert.NoError(t, err)
+	pluginName, err = v.LoadSchema(string(schema))
+	assert.EqualValues(t, "uuid-custom", pluginName)
+	assert.NoError(t, err)
+	t.Run("error with invalid uuid and utils.is_valid_uuid", func(t *testing.T) {
+		plugin := `{
+                     "name": "uuid-custom",
+                     "config": {
+                       "uuid": "bar"
+                     },
+                     "enabled": true,
+                     "protocols": [ "http"]
+                   }`
+		err := v.Validate(plugin)
+		assert.NotNil(t, err)
+	})
+	t.Run("validates a uuid correctly with utils.is_valid_uuid", func(t *testing.T) {
+		plugin := `{
+                     "name": "uuid-custom",
+                     "config": {
+                       "uuid": "a33376c5-6c1a-4c8e-98dd-24c51e70830a"
+                     },
+                     "enabled": true,
+                     "protocols": [ "http"]
+                   }`
+		err := v.Validate(plugin)
+		assert.NoError(t, err)
+	})
 	t.Run("validates a uuid correctly", func(t *testing.T) {
 		plugin := `{
                      "name": "test",
