@@ -27,6 +27,14 @@ type KongPluginSchema struct {
 	Fields []map[string]interface{} `json:"fields,omitempty" yaml:"fields,omitempty"`
 }
 
+func jsonify(v any) string {
+	out, err := json.Marshal(v)
+	if err != nil {
+		return ""
+	}
+	return string(out)
+}
+
 func TestValidator_ValidateSchema(t *testing.T) {
 	v, err := NewValidator(ValidatorOpts{})
 	assert.Nil(t, err)
@@ -1560,6 +1568,148 @@ func TestValidator_ValidateAllTypedefs(t *testing.T) {
 			}`,
 			wantErr:     true,
 			expectedErr: `{"config":{"sni":"must not be an IP"}}`,
+		},
+		{
+			name: "valid certificate",
+			config: jsonify(map[string]string{
+				"certificate": pluginTesting.Cert,
+			}),
+		},
+		{
+			name: "valid ecdsa-with-SHA256 certificate",
+			config: jsonify(map[string]string{
+				"certificate": pluginTesting.CertEcdsa,
+			}),
+		},
+		{
+			name: "valid webclient certificate",
+			config: jsonify(map[string]string{
+				"certificate": pluginTesting.CertClient,
+			}),
+		},
+		{
+			name: "valid webclient2 certificate",
+			config: jsonify(map[string]string{
+				"certificate": pluginTesting.CertClient2,
+			}),
+		},
+		{
+			name: "expired certificate",
+			config: jsonify(map[string]string{
+				"certificate": pluginTesting.CertAlt,
+			}),
+		},
+		{
+			name: "valid alt ecdsa certificate",
+			config: jsonify(map[string]string{
+				"certificate": pluginTesting.CertAltEcdsa,
+			}),
+		},
+		{
+			name: "expired alt-alt certificate",
+			config: jsonify(map[string]string{
+				"certificate": pluginTesting.CertAltAlt,
+			}),
+		},
+		{
+			name: "valid alt-alt ecdsa certificate",
+			config: jsonify(map[string]string{
+				"certificate": pluginTesting.CertAltAltEcdsa,
+			}),
+		},
+		{
+			name: "valid CA certificate",
+			config: jsonify(map[string]string{
+				"certificate": pluginTesting.CertCA,
+			}),
+		},
+		{
+			name: "invalid cert",
+			config: jsonify(map[string]string{
+				"certificate": "bla",
+			}),
+			wantErr:     true,
+			expectedErr: `{"config": {"certificate": "failed to parse certificate"}}`,
+		},
+		{
+			name: "wrong cert type",
+			config: `{
+				"certificate": 9
+			}`,
+			wantErr:     true,
+			expectedErr: `{"config": {"certificate": "expected a string"}}`,
+		},
+		{
+			name: "valid key",
+			config: jsonify(map[string]string{
+				"key": pluginTesting.Key,
+			}),
+		},
+		{
+			name: "wrong key type",
+			config: `{
+			"key": 9
+		}`,
+			wantErr:     true,
+			expectedErr: `{"config": {"key": "expected a string"}}`,
+		},
+		{
+			name: "valid ecdsa-with-SHA256 key",
+			config: jsonify(map[string]string{
+				"key": pluginTesting.KeyEcdsa,
+			}),
+		},
+		{
+			name: "valid webclient key",
+			config: jsonify(map[string]string{
+				"key": pluginTesting.KeyClient,
+			}),
+		},
+		{
+			name: "valid webclient2 key",
+			config: jsonify(map[string]string{
+				"key": pluginTesting.KeyClient2,
+			}),
+		},
+		{
+			name: "valid alt key",
+			config: jsonify(map[string]string{
+				"key": pluginTesting.KeyAlt,
+			}),
+		},
+		{
+			name: "valid alt ecdsa key",
+			config: jsonify(map[string]string{
+				"key": pluginTesting.KeyAltEcdsa,
+			}),
+		},
+		{
+			name: "valid alt-alt key",
+			config: jsonify(map[string]string{
+				"key": pluginTesting.KeyAltAlt,
+			}),
+		},
+		{
+			name: "valid alt-alt ecdsa key",
+			config: jsonify(map[string]string{
+				"key": pluginTesting.KeyAltAltEcdsa,
+			}),
+		},
+		{
+			name: "valid CA key",
+			config: jsonify(map[string]string{
+				"key": pluginTesting.KeyCA,
+			}),
+		},
+		{
+			name: "invalid key",
+			config: jsonify(map[string]string{
+				"key": "bla",
+			}),
+			wantErr: true,
+			expectedErr: `{"config": {
+				"key": "failed to parse key"
+			}}`,
 		},
 		{
 			name: "valid tag",

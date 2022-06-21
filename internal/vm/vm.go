@@ -13,6 +13,7 @@ import (
 	"github.com/kong/goks/lualibs/go/ngx"
 	"github.com/kong/goks/lualibs/go/rand"
 	"github.com/kong/goks/lualibs/go/uuid"
+	"github.com/kong/goks/lualibs/go/x509"
 	json "github.com/layeh/gopher-json"
 	"github.com/yuin/gluare"
 	lua "github.com/yuin/gopher-lua"
@@ -54,6 +55,7 @@ func New(opts Opts) (*VM, error) {
 	l.PreloadModule("go.uuid", uuid.Loader)
 	l.PreloadModule("go.ipmatcher", ipmatcher.Loader)
 	l.PreloadModule("go.re2", gluare.Loader)
+	l.PreloadModule("go.x509", x509.Loader)
 	ngx.LoadNgx(l)
 
 	if err := setup(l); err != nil {
