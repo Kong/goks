@@ -64,7 +64,7 @@ end
 
 local function load_plugin_schema_impl(plugin_schema_string, validate_empty)
   local plugin_schema = loadstring(plugin_schema_string)()
-  if validate and plugin_schema == nil then
+  if validate_empty and plugin_schema == nil then
     return nil, "invalid plugin schema: cannot be empty"
   end
   local ok, err_t = MetaSchema.MetaSubSchema:validate(plugin_schema)
