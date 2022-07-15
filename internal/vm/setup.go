@@ -62,36 +62,41 @@ _G["process_auto_fields"] = function(plugin)
   return json.encode(p)
 end
 
-_G["validate_plugin_schema"] = function(plugin_schema_string)
+local function load_plugin_schema_impl(plugin_schema_string, validate_empty)
   local plugin_schema = loadstring(plugin_schema_string)()
-  if plugin_schema == nil then
+  if validate and plugin_schema == nil then
     return nil, "invalid plugin schema: cannot be empty"
   end
-
   local ok, err_t = MetaSchema.MetaSubSchema:validate(plugin_schema)
   if not ok then
     return nil, tostring(errors:schema_violation(err_t))
   end
+  return plugin_schema, nil
+end
 
+_G["validate_plugin_schema"] = function(plugin_schema_string)
+  local plugin_schema, err = load_plugin_schema_impl(plugin_schema_string, true)
+  if err ~= nil then
+    return nil, err
+  end
   local plugin_name = plugin_schema.name
-  ok, err = Entity.new_subschema(validate_plugins, plugin_name, plugin_schema)
+  local ok, err = Entity.new_subschema(validate_plugins, plugin_name, plugin_schema)
   if not ok then
     return nil, "error loading schema for plugin: " .. err
   end
   validate_plugins.subschemas[plugin_name] = nil
-
   return plugin_name, nil
 end
 
-_G["load_plugin_schema"] = function(plugin_schema_string)
-  local plugin_schema = loadstring(plugin_schema_string)()
-  local ok, err_t = MetaSchema.MetaSubSchema:validate(plugin_schema)
-  if not ok then
-    return nil, tostring(errors:schema_violation(err_t))
-  end
 
+
+_G["load_plugin_schema"] = function(plugin_schema_string)
+  local plugin_schema, err = load_plugin_schema_impl(plugin_schema_string, false)
+  if err ~= nil then 
+    return nil, err
+  end
   local plugin_name = plugin_schema.name
-  ok, err = Entity.new_subschema(Plugins, plugin_name, plugin_schema)
+  local ok, err = Entity.new_subschema(Plugins, plugin_name, plugin_schema)
   if not ok then
     return nil, "error initializing schema for plugin: " .. err
   end
