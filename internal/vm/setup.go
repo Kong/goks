@@ -28,7 +28,7 @@ assert(Entity.new(consumers_definition))
 
 local plugins_definition = require "kong.db.schema.entities.plugins"
 local Plugins = assert(Entity.new(plugins_definition))
-local validate_plugins = assert(Entity.new(plugins_definition))
+
 
 local errors = Errors.new("goks")
 
@@ -62,45 +62,40 @@ _G["process_auto_fields"] = function(plugin)
   return json.encode(p)
 end
 
-local function load_plugin_schema_impl(plugin_schema_string, validate_empty)
+local function load_plugin_schema(plugin_schema_string, validate_plugins)
   local plugin_schema = loadstring(plugin_schema_string)()
-  if validate_empty and plugin_schema == nil then
+  if plugin_schema == nil then
     return nil, "invalid plugin schema: cannot be empty"
   end
   local ok, err_t = MetaSchema.MetaSubSchema:validate(plugin_schema)
   if not ok then
     return nil, tostring(errors:schema_violation(err_t))
   end
-  return plugin_schema, nil
-end
-
-_G["validate_plugin_schema"] = function(plugin_schema_string)
-  local plugin_schema, err = load_plugin_schema_impl(plugin_schema_string, true)
-  if err ~= nil then
-    return nil, err
-  end
   local plugin_name = plugin_schema.name
   local ok, err = Entity.new_subschema(validate_plugins, plugin_name, plugin_schema)
   if not ok then
     return nil, "error loading schema for plugin: " .. err
   end
+  return plugin_schema, nil
+end
+
+_G["validate_plugin_schema"] = function(plugin_schema_string)
+  local validate_plugins = assert(Entity.new(plugins_definition))
+  local plugin_schema, err = load_plugin_schema(plugin_schema_string, validate_plugins)
+  if err ~= nil then
+    return nil, err
+  end
+  local plugin_name = plugin_schema.name
   validate_plugins.subschemas[plugin_name] = nil
   return plugin_name, nil
 end
 
-
-
 _G["load_plugin_schema"] = function(plugin_schema_string)
-  local plugin_schema, err = load_plugin_schema_impl(plugin_schema_string, false)
+  local plugin_schema, err = load_plugin_schema(plugin_schema_string, Plugins)
   if err ~= nil then 
     return nil, err
   end
-  local plugin_name = plugin_schema.name
-  local ok, err = Entity.new_subschema(Plugins, plugin_name, plugin_schema)
-  if not ok then
-    return nil, "error initializing schema for plugin: " .. err
-  end
-  return plugin_name, nil
+  return plugin_schema.name, nil
 end
 
 _G["unload_plugin_schema"] = function(plugin_name)
