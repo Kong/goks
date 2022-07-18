@@ -1667,7 +1667,7 @@ function Schema:process_auto_fields(data, context, nulls, opts)
         end
 
       elseif ftype == "string" then
-        if is_insert_or_upsert and value == nil then
+        if is_insert_or_upsert and value == null then
           value = random_string()
         end
 
