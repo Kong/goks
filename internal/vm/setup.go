@@ -85,9 +85,7 @@ _G["validate_plugin_schema"] = function(plugin_schema_string)
   if err ~= nil then
     return nil, err
   end
-  local plugin_name = plugin_schema.name
-  validate_plugins.subschemas[plugin_name] = nil
-  return plugin_name, nil
+  return plugin_schema.name, nil
 end
 
 _G["load_plugin_schema"] = function(plugin_schema_string)
