@@ -258,7 +258,7 @@ index 625bb0c63..3c7126165 100644
 
        elseif ftype == "string" then
 -        if is_insert_or_upsert and value == nil then
-+        if is_insert_or_upsert and value == null then
++        if is_insert_or_upsert and (value == null or value == nil) then
            value = random_string()
          end
 
