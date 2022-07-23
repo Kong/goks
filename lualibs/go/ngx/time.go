@@ -13,14 +13,18 @@ func GetNgxTime(l *lua.LState) int {
 }
 
 func GetNgxNow(l *lua.LState) int {
+	now := Now()
+	l.Push(lua.LNumber(now))
+	return 1
+}
+
+func Now() float64 {
 	t := time.Now()
 	seconds := t.Unix()
 	var secondMultiplier int64 = 1000
 	msDivisor := 1000.0
 	miliseconds := t.UnixMilli() - seconds*secondMultiplier
-	result := float64(seconds) + float64(miliseconds)/msDivisor
-	l.Push(lua.LNumber(result))
-	return 1
+	return float64(seconds) + float64(miliseconds)/msDivisor
 }
 
 func UpdateTime(_ *lua.LState) int {
