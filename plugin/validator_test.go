@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/kong/goks/lualibs/go/ngx"
 	pluginTesting "github.com/kong/goks/plugin/testdata"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -909,11 +911,14 @@ func TestValidator_UnloadSchema(t *testing.T) {
 func TestValidator_ProcessAutoFields(t *testing.T) {
 	v, err := NewValidator(ValidatorOpts{})
 	assert.Nil(t, err)
-	schema, err := ioutil.ReadFile("testdata/key-auth.lua")
-	assert.Nil(t, err)
-	pluginName, err := v.LoadSchema(string(schema))
-	assert.EqualValues(t, "key-auth", pluginName)
-	assert.Nil(t, err)
+	for _, expectedPluginName := range []string{"key-auth", "auto-fields"} {
+		schema, err := ioutil.ReadFile(fmt.Sprintf("testdata/%s.lua", expectedPluginName))
+		assert.Nil(t, err)
+		pluginName, err := v.LoadSchema(string(schema))
+		assert.EqualValues(t, expectedPluginName, pluginName)
+		assert.Nil(t, err)
+	}
+
 	t.Run("populates defaults for key-auth plugin", func(t *testing.T) {
 		plugin := `{
                      "name": "key-auth",
@@ -941,6 +946,30 @@ func TestValidator_ProcessAutoFields(t *testing.T) {
 		assert.Nil(t, kongPlugin.Config["service"])
 		assert.Nil(t, kongPlugin.Config["route"])
 		assert.Nil(t, kongPlugin.Config["tags"])
+	})
+
+	// Note: setup lua code in vm.go forces insert
+	t.Run("populate insert auto-fields", func(t *testing.T) {
+		plugin := `{
+			"name": "auto-fields",
+			"config": {}
+		}`
+		plugin, err := v.ProcessAutoFields(plugin)
+		assert.Nil(t, err)
+		var kongPlugin KongPlugin
+		assert.Nil(t, json.Unmarshal([]byte(plugin), &kongPlugin))
+		assert.LessOrEqual(t, kongPlugin.Config["created_at"], ngx.Now())
+		assert.LessOrEqual(t, kongPlugin.Config["updated_at"], float64(time.Now().Unix()))
+		assert.NotEmpty(t, kongPlugin.Config["string"])
+		stringValue, ok := kongPlugin.Config["string"].(string)
+		require.True(t, ok)
+		assert.Equal(t, len(stringValue), 32)
+		assert.NotEmpty(t, kongPlugin.Config["uuid"])
+		uuidValue, ok := kongPlugin.Config["uuid"].(string)
+		require.True(t, ok)
+		assert.Equal(t, len(uuidValue), 36)
+		_, err = uuid.Parse(uuidValue)
+		require.NoError(t, err)
 	})
 }
 
